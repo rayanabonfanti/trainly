@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter Web (porta 8080)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "args": [
+        "-d", "chrome",
+        "--web-port", "8080"
+      ]
+    },
+    {
+      "name": "Flutter Android",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart"
+    },
+    {
+      "name": "Flutter Web (porta 8080) - Debug",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "args": [
+        "-d", "chrome",
+        "--web-port", "8080",
+        "--web-browser-flag", "--disable-web-security"
+      ]
+    }
+  ]
+}
