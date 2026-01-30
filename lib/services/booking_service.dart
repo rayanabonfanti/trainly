@@ -280,16 +280,45 @@ class BookingService {
     if (userId == null) return [];
 
     try {
-      final response = await supabase
+      // Busca as reservas do usuário
+      final bookingsResponse = await supabase
           .from('bookings')
-          .select('''
-            *,
-            classes (*)
-          ''')
+          .select()
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      return (response as List).map((json) => Booking.fromJson(json)).toList();
+      final bookings = bookingsResponse as List;
+      if (bookings.isEmpty) return [];
+
+      // Busca os IDs das aulas
+      final classIds = bookings
+          .map((b) => b['class_id'] as String)
+          .toSet()
+          .toList();
+
+      // Busca as aulas separadamente
+      final classesResponse = await supabase
+          .from('classes')
+          .select()
+          .inFilter('id', classIds);
+
+      // Cria um mapa de aulas por ID
+      final classesMap = <String, Map<String, dynamic>>{};
+      for (final classData in classesResponse as List) {
+        classesMap[classData['id'] as String] = classData;
+      }
+
+      // Combina os dados
+      return bookings.map((bookingJson) {
+        final classId = bookingJson['class_id'] as String;
+        final classData = classesMap[classId];
+        
+        // Adiciona os dados da aula ao booking
+        final combinedJson = Map<String, dynamic>.from(bookingJson);
+        combinedJson['classes'] = classData;
+        
+        return Booking.fromJson(combinedJson);
+      }).toList();
     } catch (e) {
       // Se tabela não existe ou outro erro, retorna lista vazia
       return [];
@@ -304,17 +333,57 @@ class BookingService {
     try {
       final now = DateTime.now();
 
-      final response = await supabase
+      // Busca as reservas do usuário
+      final bookingsResponse = await supabase
           .from('bookings')
-          .select('''
-            *,
-            classes!inner (*)
-          ''')
-          .eq('user_id', userId)
-          .gte('classes.start_time', now.toIso8601String())
-          .order('classes(start_time)', ascending: true);
+          .select()
+          .eq('user_id', userId);
 
-      return (response as List).map((json) => Booking.fromJson(json)).toList();
+      final bookings = bookingsResponse as List;
+      if (bookings.isEmpty) return [];
+
+      // Busca os IDs das aulas
+      final classIds = bookings
+          .map((b) => b['class_id'] as String)
+          .toSet()
+          .toList();
+
+      // Busca as aulas futuras
+      final classesResponse = await supabase
+          .from('classes')
+          .select()
+          .inFilter('id', classIds)
+          .gte('start_time', now.toIso8601String())
+          .order('start_time', ascending: true);
+
+      // Cria um mapa de aulas por ID
+      final classesMap = <String, Map<String, dynamic>>{};
+      for (final classData in classesResponse as List) {
+        classesMap[classData['id'] as String] = classData;
+      }
+
+      // Combina os dados (apenas reservas com aulas futuras)
+      final result = <Booking>[];
+      for (final bookingJson in bookings) {
+        final classId = bookingJson['class_id'] as String;
+        final classData = classesMap[classId];
+        
+        // Só inclui se a aula existe e é futura
+        if (classData != null) {
+          final combinedJson = Map<String, dynamic>.from(bookingJson);
+          combinedJson['classes'] = classData;
+          result.add(Booking.fromJson(combinedJson));
+        }
+      }
+
+      // Ordena por horário de início da aula
+      result.sort((a, b) {
+        final aTime = a.swimClass?.startTime ?? DateTime.now();
+        final bTime = b.swimClass?.startTime ?? DateTime.now();
+        return aTime.compareTo(bTime);
+      });
+
+      return result;
     } catch (e) {
       // Se tabela não existe ou outro erro, retorna lista vazia
       return [];
@@ -325,14 +394,28 @@ class BookingService {
   /// Verifica deadline de cancelamento e limite de cancelamentos
   Future<BookingResult> cancelBooking(String bookingId, {bool forceCancel = false}) async {
     try {
-      // Busca a reserva para verificar a aula
+      // Busca a reserva primeiro (sem join)
       final bookingResponse = await supabase
           .from('bookings')
-          .select('*, classes(*)')
+          .select()
           .eq('id', bookingId)
           .single();
 
-      final classData = bookingResponse['classes'];
+      final classId = bookingResponse['class_id'] as String;
+
+      // Busca os dados da aula separadamente
+      Map<String, dynamic>? classData;
+      try {
+        final classResponse = await supabase
+            .from('classes')
+            .select()
+            .eq('id', classId)
+            .single();
+        classData = classResponse;
+      } catch (e) {
+        // Aula pode não existir mais
+      }
+
       if (classData != null && !forceCancel) {
         final startTime = DateTime.parse(classData['start_time'] as String);
         
@@ -393,15 +476,39 @@ class BookingService {
       final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
       final startOfMonth = DateTime(now.year, now.month, 1);
 
-      // Conta reservas ativas desta semana
+      // Busca reservas do usuário
       final bookingsResponse = await supabase
           .from('bookings')
-          .select('id, classes!inner(start_time)')
-          .eq('user_id', userId)
-          .gte('classes.start_time', startOfWeek.toIso8601String())
-          .gte('classes.start_time', now.toIso8601String());
+          .select('id, class_id')
+          .eq('user_id', userId);
 
-      final activeBookings = (bookingsResponse as List).length;
+      final bookings = bookingsResponse as List;
+      int activeBookings = 0;
+
+      if (bookings.isNotEmpty) {
+        // Busca os IDs das aulas
+        final classIds = bookings
+            .map((b) => b['class_id'] as String)
+            .toSet()
+            .toList();
+
+        // Busca aulas futuras desta semana
+        final classesResponse = await supabase
+            .from('classes')
+            .select('id')
+            .inFilter('id', classIds)
+            .gte('start_time', startOfWeek.toIso8601String())
+            .gte('start_time', now.toIso8601String());
+
+        final futureClassIds = (classesResponse as List)
+            .map((c) => c['id'] as String)
+            .toSet();
+
+        // Conta quantas reservas são para aulas futuras desta semana
+        activeBookings = bookings
+            .where((b) => futureClassIds.contains(b['class_id'] as String))
+            .length;
+      }
 
       // Conta cancelamentos deste mês
       int cancellations = 0;
@@ -618,36 +725,65 @@ class BookingService {
       final now = DateTime.now();
       final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
 
-      // Busca todas as reservas futuras com informações do aluno e da aula
-      final response = await supabase
+      // Busca todas as reservas
+      final bookingsResponse = await supabase
           .from('bookings')
-          .select('''
-            id,
-            user_id,
-            created_at,
-            classes!inner (
-              id,
-              title,
-              type,
-              start_time,
-              end_time,
-              capacity,
-              lanes
-            ),
-            profiles:user_id (
-              id,
-              email,
-              name
-            )
-          ''')
-          .gte('classes.start_time', now.toIso8601String())
-          .order('classes(start_time)', ascending: true);
+          .select('id, user_id, class_id, created_at');
+
+      final bookings = bookingsResponse as List;
+      if (bookings.isEmpty) return [];
+
+      // Busca os IDs das aulas e usuários
+      final classIds = bookings
+          .map((b) => b['class_id'] as String)
+          .toSet()
+          .toList();
+      final userIds = bookings
+          .map((b) => b['user_id'] as String)
+          .toSet()
+          .toList();
+
+      // Busca as aulas futuras
+      final classesResponse = await supabase
+          .from('classes')
+          .select()
+          .inFilter('id', classIds)
+          .gte('start_time', now.toIso8601String())
+          .order('start_time', ascending: true);
+
+      // Cria mapa de aulas por ID
+      final classesMap = <String, Map<String, dynamic>>{};
+      for (final classData in classesResponse as List) {
+        classesMap[classData['id'] as String] = classData;
+      }
+
+      // Busca perfis dos usuários
+      final profilesMap = <String, Map<String, dynamic>>{};
+      try {
+        final profilesResponse = await supabase
+            .from('profiles')
+            .select('id, email, name')
+            .inFilter('id', userIds);
+
+        for (final profile in profilesResponse as List) {
+          profilesMap[profile['id'] as String] = profile;
+        }
+      } catch (e) {
+        // Tabela profiles pode não ter todos os dados
+      }
+
+      // Filtra reservas para aulas futuras
+      final futureBookings = bookings.where((b) {
+        final classId = b['class_id'] as String;
+        return classesMap.containsKey(classId);
+      }).toList();
 
       // Agrupa reservas por usuário para calcular o total
       final userBookingsCount = <String, int>{};
-      for (final booking in response as List) {
+      for (final booking in futureBookings) {
         final userId = booking['user_id'] as String;
-        final classData = booking['classes'];
+        final classId = booking['class_id'] as String;
+        final classData = classesMap[classId];
         if (classData != null) {
           final startTime = DateTime.parse(classData['start_time'] as String);
           // Conta apenas reservas desta semana
@@ -662,11 +798,15 @@ class BookingService {
           ? BookingRules.maxBookingsPerWeek 
           : 999;
 
-      return response.map((json) {
-        final userId = json['user_id'] as String;
-        final profile = json['profiles'];
-        final classData = json['classes'];
-        
+      final result = <StudentBookingInfo>[];
+      for (final booking in futureBookings) {
+        final userId = booking['user_id'] as String;
+        final classId = booking['class_id'] as String;
+        final classData = classesMap[classId];
+        final profile = profilesMap[userId];
+
+        if (classData == null) continue;
+
         final studentName = profile?['name'] as String? ?? 
             _extractNameFromEmail(profile?['email'] as String? ?? 'Aluno');
         final studentEmail = profile?['email'] as String? ?? '';
@@ -676,8 +816,8 @@ class BookingService {
             ? (maxBookings - bookingsThisWeek).clamp(0, maxBookings)
             : -1; // -1 indica sem limite
 
-        return StudentBookingInfo(
-          bookingId: json['id'] as String,
+        result.add(StudentBookingInfo(
+          bookingId: booking['id'] as String,
           classId: classData['id'] as String,
           classTitle: classData['title'] as String,
           classType: classData['type'] as String,
@@ -688,8 +828,13 @@ class BookingService {
           studentEmail: studentEmail,
           bookingsThisWeek: bookingsThisWeek,
           remainingBookings: remainingBookings,
-        );
-      }).toList();
+        ));
+      }
+
+      // Ordena por horário de início
+      result.sort((a, b) => a.classStartTime.compareTo(b.classStartTime));
+
+      return result;
     } catch (e) {
       return [];
     }
