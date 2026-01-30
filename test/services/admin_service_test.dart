@@ -90,16 +90,15 @@ void main() {
         final result = PromotionResult.success(profile);
 
         expect(result.success, isTrue);
-        expect(result.message, contains('user@example.com'));
         expect(result.message, contains('promovido'));
+        expect(result.message, contains('admin'));
         expect(result.profile, equals(profile));
       });
 
-      test('userNotFound should create failed result with email', () {
+      test('userNotFound should create failed result', () {
         final result = PromotionResult.userNotFound('notfound@example.com');
 
         expect(result.success, isFalse);
-        expect(result.message, contains('notfound@example.com'));
         expect(result.message, contains('não encontrado'));
         expect(result.profile, isNull);
       });
@@ -108,7 +107,6 @@ void main() {
         final result = PromotionResult.alreadyAdmin('admin@example.com');
 
         expect(result.success, isFalse);
-        expect(result.message, contains('admin@example.com'));
         expect(result.message, contains('já é um administrador'));
       });
 
@@ -119,20 +117,25 @@ void main() {
         expect(result.message, contains('permissão'));
       });
 
-      test('error should create failed result with error message', () {
+      test('error should create failed result with generic message for security', () {
         final result = PromotionResult.error('Database connection failed');
 
         expect(result.success, isFalse);
-        expect(result.message, contains('Erro ao promover'));
-        expect(result.message, contains('Database connection failed'));
+        expect(result.message, contains('Não foi possível promover'));
       });
 
-      test('searchError should create failed result with search error', () {
+      test('searchError should create failed result with generic message for security', () {
         final result = PromotionResult.searchError('Query timeout');
 
         expect(result.success, isFalse);
         expect(result.message, contains('Erro ao buscar'));
-        expect(result.message, contains('Query timeout'));
+      });
+
+      test('invalidEmail should create failed result', () {
+        final result = PromotionResult.invalidEmail();
+
+        expect(result.success, isFalse);
+        expect(result.message, contains('Email inválido'));
       });
     });
   });

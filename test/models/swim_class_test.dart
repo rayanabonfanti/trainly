@@ -9,7 +9,7 @@ void main() {
     });
 
     test('should have correct labels', () {
-      expect(SwimClassType.classType.label, equals('Aula'));
+      expect(SwimClassType.classType.label, equals('Aula de Natação'));
       expect(SwimClassType.free.label, equals('Nado Livre'));
     });
 
