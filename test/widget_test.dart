@@ -1,30 +1,32 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:trainly/main.dart';
+import 'package:trainly/models/training_type.dart';
+import 'package:trainly/models/time_slot.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('TrainingType', () {
+    test('fromJson creates instance correctly', () {
+      final json = {
+        'id': '123',
+        'name': 'CrossFit',
+      };
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      final trainingType = TrainingType.fromJson(json);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      expect(trainingType.id, '123');
+      expect(trainingType.name, 'CrossFit');
+    });
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  group('TimeSlot', () {
+    test('formattedTime returns correct format', () {
+      final timeSlot = TimeSlot(
+        id: '1',
+        startTime: '06:00:00',
+        endTime: '07:00:00',
+      );
+
+      expect(timeSlot.formattedTime, '06:00 - 07:00');
+    });
   });
 }

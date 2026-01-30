@@ -2,30 +2,20 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Tela de Login com Google
-/// 
-/// Usa signInWithOAuth - o Supabase gerencia toda a comunicação com o Google
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+import '../core/supabase_client.dart';
+
+/// Tela de Login com Google OAuth
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  final _supabase = Supabase.instance.client;
-
-  /// Realiza login com Google via OAuth
-  /// 
-  /// Fluxo:
-  /// 1. Supabase abre browser com página de login do Google
-  /// 2. Usuário autentica no Google
-  /// 3. Google redireciona para o Supabase
-  /// 4. Supabase valida e redireciona de volta ao app via deep link
-  /// 5. Sessão é criada automaticamente
   Future<void> _signInWithGoogle() async {
     setState(() {
       _isLoading = true;
@@ -33,34 +23,24 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      debugPrint('Iniciando login com Google...');
-      debugPrint('Plataforma Web: $kIsWeb');
-      
       if (kIsWeb) {
-        // Na web, não precisa de redirectTo - o Supabase usa a URL atual
-        await _supabase.auth.signInWithOAuth(
+        await supabase.auth.signInWithOAuth(
           OAuthProvider.google,
+          queryParams: {'prompt': 'select_account'},
         );
       } else {
-        // Em mobile (Android/iOS), usa deep link
-        await _supabase.auth.signInWithOAuth(
+        await supabase.auth.signInWithOAuth(
           OAuthProvider.google,
           redirectTo: 'io.supabase.trainly://login-callback',
+          queryParams: {'prompt': 'select_account'},
         );
       }
-      
-      debugPrint('signInWithOAuth chamado com sucesso');
-      
-      // Nota: a navegação para Home acontece automaticamente
-      // via AuthGate quando a sessão é detectada
     } on AuthException catch (e) {
-      debugPrint('AuthException: ${e.message}');
       setState(() {
         _errorMessage = 'Erro de autenticação: ${e.message}';
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('Erro genérico: $e');
       setState(() {
         _errorMessage = 'Erro ao fazer login: $e';
         _isLoading = false;
@@ -78,7 +58,6 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo/Título do app
                 const Icon(
                   Icons.fitness_center,
                   size: 80,
@@ -88,21 +67,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   'Trainly',
                   style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple,
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Seu app de treinos',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.grey[600],
-                  ),
+                        color: Colors.grey[600],
+                      ),
                 ),
-                
                 const SizedBox(height: 48),
-                
-                // Mensagem de erro, se houver
                 if (_errorMessage != null) ...[
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -126,8 +102,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                
-                // Botão de login com Google
                 SizedBox(
                   width: double.infinity,
                   height: 50,
