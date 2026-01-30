@@ -1,3 +1,5 @@
+import '../core/input_validator.dart';
+import '../core/security_helpers.dart';
 import '../core/supabase_client.dart';
 
 /// Representa um perfil de usuário
@@ -41,7 +43,7 @@ class PromotionResult {
   factory PromotionResult.success(UserProfile profile) {
     return PromotionResult(
       success: true,
-      message: 'Usuário ${profile.email} promovido para admin com sucesso!',
+      message: 'Usuário promovido para admin com sucesso!',
       profile: profile,
     );
   }
@@ -49,14 +51,14 @@ class PromotionResult {
   factory PromotionResult.userNotFound(String email) {
     return PromotionResult(
       success: false,
-      message: 'Usuário com email "$email" não encontrado',
+      message: 'Usuário não encontrado',
     );
   }
 
   factory PromotionResult.alreadyAdmin(String email) {
     return PromotionResult(
       success: false,
-      message: 'O usuário $email já é um administrador',
+      message: 'Este usuário já é um administrador',
     );
   }
 
@@ -68,16 +70,25 @@ class PromotionResult {
   }
 
   factory PromotionResult.error(String error) {
+    // SEGURANÇA: Não expõe detalhes técnicos
     return PromotionResult(
       success: false,
-      message: 'Erro ao promover usuário: $error',
+      message: 'Não foi possível promover o usuário. Tente novamente',
     );
   }
 
   factory PromotionResult.searchError(String error) {
+    // SEGURANÇA: Não expõe detalhes técnicos
     return PromotionResult(
       success: false,
-      message: 'Erro ao buscar usuário: $error',
+      message: 'Erro ao buscar usuário. Tente novamente',
+    );
+  }
+
+  factory PromotionResult.invalidEmail() {
+    return PromotionResult(
+      success: false,
+      message: 'Email inválido',
     );
   }
 }
@@ -106,14 +117,25 @@ class AdminService {
 
   /// Verifica se o usuário atual é admin
   Future<bool> isCurrentUserAdmin() async {
-    final profile = await getCurrentUserProfile();
-    return profile?.isAdmin ?? false;
+    return SecurityHelpers.isCurrentUserAdmin();
   }
 
   /// Busca um perfil por email
+  /// REQUER: Usuário autenticado como admin
   /// Retorna o perfil ou null se não encontrado
-  /// Lança exceção em caso de erro
   Future<UserProfile?> getProfileByEmail(String email) async {
+    // Validação de email
+    final emailError = InputValidator.validateEmail(email);
+    if (emailError != null) {
+      return null;
+    }
+
+    // SEGURANÇA: Apenas admins podem buscar perfis por email
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return null;
+    }
+
     final normalizedEmail = email.trim().toLowerCase();
     
     final response = await supabase
@@ -128,14 +150,21 @@ class AdminService {
   }
 
   /// Promove um usuário para admin usando o email
+  /// REQUER: Usuário autenticado como admin
   /// 
   /// Retorna um [PromotionResult] indicando sucesso ou falha com mensagem
   Future<PromotionResult> promoteToAdmin(String email) async {
+    // Validação de email
+    final emailError = InputValidator.validateEmail(email);
+    if (emailError != null) {
+      return PromotionResult.invalidEmail();
+    }
+
     final normalizedEmail = email.trim().toLowerCase();
     
     try {
       // 1. Verifica se o usuário atual é admin
-      final isAdmin = await isCurrentUserAdmin();
+      final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
       if (!isAdmin) {
         return PromotionResult.permissionDenied();
       }
@@ -143,7 +172,15 @@ class AdminService {
       // 2. Busca o perfil pelo email
       UserProfile? profile;
       try {
-        profile = await getProfileByEmail(normalizedEmail);
+        final response = await supabase
+            .from('profiles')
+            .select()
+            .eq('email', normalizedEmail)
+            .maybeSingle();
+
+        if (response != null) {
+          profile = UserProfile.fromJson(response);
+        }
       } catch (e) {
         return PromotionResult.searchError(e.toString());
       }
@@ -173,7 +210,7 @@ class AdminService {
 
       return PromotionResult.success(updatedProfile);
     } catch (e) {
-      // Verifica se é erro de permissão do RLS
+      // SEGURANÇA: Verifica se é erro de permissão do RLS
       final errorMessage = e.toString().toLowerCase();
       if (errorMessage.contains('permission') || 
           errorMessage.contains('policy') ||
@@ -185,7 +222,14 @@ class AdminService {
   }
 
   /// Lista todos os administradores
+  /// REQUER: Usuário autenticado como admin
   Future<List<UserProfile>> listAdmins() async {
+    // SEGURANÇA: Apenas admins podem listar outros admins
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return [];
+    }
+
     try {
       final response = await supabase
           .from('profiles')

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/business_settings.dart';
+import '../models/class_type.dart';
 import '../services/settings_service.dart';
 
 /// Página de Configurações do Sistema
@@ -31,6 +32,9 @@ class _SettingsPageState extends State<SettingsPage> {
   // Toggles
   bool _cancellationLimitEnabled = true;
   bool _bookingLimitEnabled = true;
+
+  // Tipos de aula
+  List<ClassType> _classTypes = [];
 
   @override
   void initState() {
@@ -94,6 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _defaultLanesController.text = settings.defaultLanes.toString();
     _cancellationLimitEnabled = settings.cancellationLimitEnabled;
     _bookingLimitEnabled = settings.bookingLimitEnabled;
+    _classTypes = List.from(settings.classTypes);
   }
 
   Future<void> _saveSettings() async {
@@ -111,6 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
         minBookingAdvanceHours: int.parse(_minAdvanceController.text),
         defaultClassCapacity: int.parse(_defaultCapacityController.text),
         defaultLanes: int.parse(_defaultLanesController.text),
+        classTypes: _classTypes,
       );
 
       final result = await _settingsService.updateSettings(newSettings);
@@ -167,6 +173,88 @@ class _SettingsPageState extends State<SettingsPage> {
     if (confirmed == true) {
       _populateForm(BusinessSettings.defaults());
       setState(() {});
+    }
+  }
+
+  void _addClassType() async {
+    final result = await showDialog<ClassType>(
+      context: context,
+      builder: (context) => _ClassTypeDialog(),
+    );
+
+    if (result != null) {
+      // Verifica se já existe um tipo com esse ID
+      if (_classTypes.any((t) => t.id == result.id)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Já existe um tipo com esse identificador'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        _classTypes.add(result);
+      });
+    }
+  }
+
+  void _editClassType(int index) async {
+    final result = await showDialog<ClassType>(
+      context: context,
+      builder: (context) => _ClassTypeDialog(classType: _classTypes[index]),
+    );
+
+    if (result != null) {
+      setState(() {
+        _classTypes[index] = result;
+      });
+    }
+  }
+
+  void _removeClassType(int index) async {
+    if (_classTypes.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('É necessário ter pelo menos um tipo de aula'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.delete_outline, size: 48, color: Colors.red),
+        title: const Text('Remover Tipo'),
+        content: Text(
+          'Tem certeza que deseja remover "${_classTypes[index].name}"?\n\n'
+          'Aulas existentes com este tipo não serão afetadas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() {
+        _classTypes.removeAt(index);
+      });
     }
   }
 
@@ -303,6 +391,14 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
           _buildClassDefaults(),
+          const SizedBox(height: 32),
+          _buildSectionHeader(
+            'Tipos de Aula',
+            Icons.category_outlined,
+            Colors.purple,
+          ),
+          const SizedBox(height: 16),
+          _buildClassTypesSection(),
           const SizedBox(height: 24),
           if (_settings?.updatedAt != null) _buildLastUpdated(),
           const SizedBox(height: 100), // Espaço para o botão
@@ -555,6 +651,89 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildClassTypesSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Gerencie os tipos de aula disponíveis para criação',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ..._classTypes.asMap().entries.map((entry) {
+              final index = entry.key;
+              final classType = entry.value;
+              return _buildClassTypeItem(classType, index);
+            }),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _addClassType,
+                icon: const Icon(Icons.add),
+                label: const Text('Adicionar Tipo'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClassTypeItem(ClassType classType, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.purple.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(classType.iconData, color: Colors.purple, size: 24),
+        ),
+        title: Text(
+          classType.name,
+          style: const TextStyle(fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          'ID: ${classType.id}',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              onPressed: () => _editClassType(index),
+              tooltip: 'Editar',
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: _classTypes.length > 1 ? Colors.red : Colors.grey,
+              ),
+              onPressed: _classTypes.length > 1 ? () => _removeClassType(index) : null,
+              tooltip: 'Remover',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLastUpdated() {
     final date = _settings!.updatedAt!;
     final formatted = '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} às ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
@@ -614,6 +793,167 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Dialog para adicionar/editar tipo de aula
+class _ClassTypeDialog extends StatefulWidget {
+  final ClassType? classType;
+
+  const _ClassTypeDialog({this.classType});
+
+  @override
+  State<_ClassTypeDialog> createState() => _ClassTypeDialogState();
+}
+
+class _ClassTypeDialogState extends State<_ClassTypeDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _idController;
+  late TextEditingController _nameController;
+  String _selectedIcon = 'school';
+
+  bool get _isEditing => widget.classType != null;
+
+
+  @override
+  void initState() {
+    super.initState();
+    _idController = TextEditingController(text: widget.classType?.id ?? '');
+    _nameController = TextEditingController(text: widget.classType?.name ?? '');
+    _selectedIcon = widget.classType?.icon ?? 'school';
+  }
+
+  @override
+  void dispose() {
+    _idController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+
+    final classType = ClassType(
+      id: _idController.text.trim().toLowerCase().replaceAll(' ', '_'),
+      name: _nameController.text.trim(),
+      icon: _selectedIcon,
+    );
+
+    Navigator.of(context).pop(classType);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Editar Tipo' : 'Novo Tipo de Aula'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nome *',
+                  hintText: 'Ex: Hidroginástica',
+                  prefixIcon: Icon(Icons.label),
+                ),
+                textCapitalization: TextCapitalization.words,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Nome é obrigatório';
+                  }
+                  if (value.trim().length > 50) {
+                    return 'Máximo 50 caracteres';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _idController,
+                enabled: !_isEditing, // Não permite editar ID
+                decoration: InputDecoration(
+                  labelText: 'Identificador *',
+                  hintText: 'Ex: hidroginastica',
+                  prefixIcon: const Icon(Icons.key),
+                  helperText: _isEditing ? 'Não pode ser alterado' : 'Sem espaços ou acentos',
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Identificador é obrigatório';
+                  }
+                  if (value.contains(' ') || !RegExp(r'^[a-z0-9_]+$').hasMatch(value.trim().toLowerCase())) {
+                    return 'Use apenas letras minúsculas, números e _';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Ícone',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: ClassTypeIcons.availableIcons.map((iconData) {
+                  final iconName = iconData['name'] as String;
+                  final isSelected = _selectedIcon == iconName;
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        _selectedIcon = iconName;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey.shade300,
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Icon(
+                        ClassTypeIcons.getIconData(iconName),
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey[700],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: Text(_isEditing ? 'Salvar' : 'Adicionar'),
+        ),
+      ],
     );
   }
 }

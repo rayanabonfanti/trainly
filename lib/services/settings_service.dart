@@ -1,5 +1,7 @@
+import '../core/security_helpers.dart';
 import '../core/supabase_client.dart';
 import '../models/business_settings.dart';
+import '../models/class_type.dart';
 
 /// Cache local das configurações
 BusinessSettings? _cachedSettings;
@@ -21,11 +23,10 @@ class SettingsService {
           .maybeSingle();
 
       if (response == null) {
-        // Cria configurações padrão se não existir
-        final defaults = BusinessSettings.defaults();
-        await _createDefaultSettings(defaults);
-        _cachedSettings = defaults;
-        return defaults;
+        // Retorna configurações padrão sem criar no banco
+        // Apenas admins devem criar configurações
+        _cachedSettings = BusinessSettings.defaults();
+        return _cachedSettings!;
       }
 
       _cachedSettings = BusinessSettings.fromJson(response);
@@ -39,7 +40,7 @@ class SettingsService {
           errorMessage.contains('pgrst205')) {
         throw Exception(
           'Tabela de configurações não encontrada. '
-          'Execute o script migration_admin_features.sql no Supabase Dashboard.'
+          'Entre em contato com o administrador.'
         );
       }
       
@@ -50,7 +51,14 @@ class SettingsService {
   }
 
   /// Cria configurações padrão no banco
+  /// REQUER: Usuário autenticado como admin
   Future<void> _createDefaultSettings(BusinessSettings settings) async {
+    // SEGURANÇA: Verifica se é admin antes de criar configurações
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return;
+    }
+
     try {
       await supabase.from('business_settings').insert({
         'id': 'default',
@@ -62,7 +70,14 @@ class SettingsService {
   }
 
   /// Atualiza as configurações
+  /// REQUER: Usuário autenticado como admin
   Future<SettingsResult> updateSettings(BusinessSettings settings) async {
+    // SEGURANÇA: Verifica se é admin antes de atualizar
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return SettingsResult.error('Você não tem permissão para alterar configurações');
+    }
+
     try {
       final userId = supabase.auth.currentUser?.id;
       
@@ -81,29 +96,8 @@ class SettingsService {
 
       return SettingsResult.success('Configurações salvas com sucesso!');
     } catch (e) {
-      final errorMessage = e.toString().toLowerCase();
-      
-      // Se a tabela não existe
-      if (errorMessage.contains('could not find the table') ||
-          errorMessage.contains('relation') && errorMessage.contains('does not exist') ||
-          errorMessage.contains('pgrst205')) {
-        return SettingsResult.error(
-          'Tabela de configurações não encontrada. '
-          'Execute o script migration_admin_features.sql no Supabase Dashboard.'
-        );
-      }
-      
-      // Se é erro de permissão
-      if (errorMessage.contains('permission') || 
-          errorMessage.contains('policy') ||
-          errorMessage.contains('denied') ||
-          errorMessage.contains('rls')) {
-        return SettingsResult.error(
-          'Sem permissão para salvar. Verifique se você é administrador.'
-        );
-      }
-      
-      return SettingsResult.error('Erro ao salvar configurações: $e');
+      // SEGURANÇA: Mensagens de erro genéricas
+      return SettingsResult.error(SecurityHelpers.sanitizeErrorMessage(e.toString()));
     }
   }
 
@@ -112,10 +106,40 @@ class SettingsService {
     _cachedSettings = null;
   }
 
+  /// Limpa cache de admin ao deslogar
+  void clearAllCaches() {
+    _cachedSettings = null;
+    SecurityHelpers.clearAdminCache();
+  }
+
   /// Retorna as configurações do cache (síncrono)
   /// Use apenas quando tiver certeza que já foi carregado
   BusinessSettings get cachedSettings {
     return _cachedSettings ?? BusinessSettings.defaults();
+  }
+
+  /// Retorna os tipos de aula configurados
+  List<ClassType> get classTypes {
+    return cachedSettings.classTypes;
+  }
+
+  /// Busca o nome do tipo de aula pelo ID
+  /// Retorna o ID se não encontrar
+  String getClassTypeName(String typeId) {
+    final classType = classTypes.firstWhere(
+      (t) => t.id == typeId,
+      orElse: () => ClassType(id: typeId, name: typeId),
+    );
+    return classType.name;
+  }
+
+  /// Busca o ClassType pelo ID
+  ClassType? getClassTypeById(String typeId) {
+    try {
+      return classTypes.firstWhere((t) => t.id == typeId);
+    } catch (e) {
+      return null;
+    }
   }
 }
 

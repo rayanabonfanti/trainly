@@ -43,3 +43,21 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Environment variables (SECURITY)
+.env
+.env.*
+.env.local
+.env.*.local
+*.env
+
+# Keystore files (SECURITY)
+*.jks
+*.keystore
+key.properties
+
+# Credentials and secrets (SECURITY)
+credentials.json
+secrets.json
+google-services.json
+GoogleService-Info.plist

@@ -1,3 +1,5 @@
+import 'class_type.dart';
+
 /// Model para configurações de negócio dinâmicas
 class BusinessSettings {
   /// Deadline de cancelamento em horas (ex: 2 = 2 horas antes da aula)
@@ -25,6 +27,9 @@ class BusinessSettings {
   /// Número padrão de raias para novas aulas
   final int defaultLanes;
 
+  /// Tipos de aula disponíveis (configurável pelo admin)
+  final List<ClassType> classTypes;
+
   /// Data da última atualização
   final DateTime? updatedAt;
 
@@ -40,9 +45,10 @@ class BusinessSettings {
     this.minBookingAdvanceHours = 24,
     this.defaultClassCapacity = 10,
     this.defaultLanes = 4,
+    List<ClassType>? classTypes,
     this.updatedAt,
     this.updatedBy,
-  });
+  }) : classTypes = classTypes ?? ClassType.defaults;
 
   /// Valores padrão
   factory BusinessSettings.defaults() {
@@ -55,6 +61,7 @@ class BusinessSettings {
       minBookingAdvanceHours: 24,
       defaultClassCapacity: 10,
       defaultLanes: 4,
+      classTypes: ClassType.defaults,
     );
   }
 
@@ -68,6 +75,7 @@ class BusinessSettings {
       minBookingAdvanceHours: json['min_booking_advance_hours'] as int? ?? 24,
       defaultClassCapacity: json['default_class_capacity'] as int? ?? 10,
       defaultLanes: json['default_lanes'] as int? ?? 4,
+      classTypes: ClassType.fromJsonList(json['class_types'] as List<dynamic>?),
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
@@ -85,6 +93,7 @@ class BusinessSettings {
       'min_booking_advance_hours': minBookingAdvanceHours,
       'default_class_capacity': defaultClassCapacity,
       'default_lanes': defaultLanes,
+      'class_types': ClassType.toJsonList(classTypes),
     };
   }
 
@@ -97,6 +106,7 @@ class BusinessSettings {
     int? minBookingAdvanceHours,
     int? defaultClassCapacity,
     int? defaultLanes,
+    List<ClassType>? classTypes,
     DateTime? updatedAt,
     String? updatedBy,
   }) {
@@ -109,6 +119,7 @@ class BusinessSettings {
       minBookingAdvanceHours: minBookingAdvanceHours ?? this.minBookingAdvanceHours,
       defaultClassCapacity: defaultClassCapacity ?? this.defaultClassCapacity,
       defaultLanes: defaultLanes ?? this.defaultLanes,
+      classTypes: classTypes ?? this.classTypes,
       updatedAt: updatedAt ?? this.updatedAt,
       updatedBy: updatedBy ?? this.updatedBy,
     );

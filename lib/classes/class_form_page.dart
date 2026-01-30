@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/class_type.dart';
 import '../models/swim_class.dart';
 import '../services/admin_service.dart';
 import '../services/classes_service.dart';
+import '../services/settings_service.dart';
 
 /// Tela de formulário para criar/editar aulas
 ///
@@ -21,6 +23,7 @@ class ClassFormPage extends StatefulWidget {
 class _ClassFormPageState extends State<ClassFormPage> {
   final _classesService = ClassesService();
   final _adminService = AdminService();
+  final _settingsService = SettingsService();
   final _formKey = GlobalKey<FormState>();
 
   final _titleController = TextEditingController();
@@ -31,7 +34,10 @@ class _ClassFormPageState extends State<ClassFormPage> {
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 7, minute: 0);
-  SwimClassType _selectedType = SwimClassType.classType;
+  
+  // Tipos de aula dinâmicos
+  List<ClassType> _classTypes = ClassType.defaults;
+  ClassType? _selectedClassType;
 
   bool _isLoading = false;
   bool _isCheckingAccess = true;
@@ -43,7 +49,36 @@ class _ClassFormPageState extends State<ClassFormPage> {
   void initState() {
     super.initState();
     _checkAccess();
+    _loadClassTypes();
     _initializeForm();
+  }
+
+  Future<void> _loadClassTypes() async {
+    try {
+      final settings = await _settingsService.getSettings();
+      if (mounted) {
+        setState(() {
+          _classTypes = settings.classTypes;
+          // Se editando, encontra o tipo correspondente
+          if (widget.swimClass != null) {
+            _selectedClassType = _classTypes.firstWhere(
+              (t) => t.id == widget.swimClass!.type.value,
+              orElse: () => _classTypes.first,
+            );
+          } else {
+            _selectedClassType = _classTypes.isNotEmpty ? _classTypes.first : null;
+          }
+        });
+      }
+    } catch (e) {
+      // Usa tipos padrão se falhar
+      if (mounted) {
+        setState(() {
+          _classTypes = ClassType.defaults;
+          _selectedClassType = _classTypes.first;
+        });
+      }
+    }
   }
 
   @override
@@ -65,7 +100,6 @@ class _ClassFormPageState extends State<ClassFormPage> {
       _selectedDate = swimClass.startTime;
       _startTime = TimeOfDay.fromDateTime(swimClass.startTime);
       _endTime = TimeOfDay.fromDateTime(swimClass.endTime);
-      _selectedType = swimClass.type;
     } else {
       _capacityController.text = '6';
       _lanesController.text = '3';
@@ -162,6 +196,11 @@ class _ClassFormPageState extends State<ClassFormPage> {
     });
 
     try {
+      // Converte ClassType para SwimClassType
+      final swimClassType = _selectedClassType != null
+          ? SwimClassType.fromString(_selectedClassType!.id)
+          : SwimClassType.classType;
+
       final swimClass = SwimClass(
         id: widget.swimClass?.id ?? '',
         title: _titleController.text.trim(),
@@ -172,7 +211,7 @@ class _ClassFormPageState extends State<ClassFormPage> {
         endTime: _combineDateAndTime(_selectedDate, _endTime),
         capacity: int.parse(_capacityController.text),
         lanes: int.parse(_lanesController.text),
-        type: _selectedType,
+        type: swimClassType,
       );
 
       final result = _isEditing
@@ -481,6 +520,10 @@ class _ClassFormPageState extends State<ClassFormPage> {
   }
 
   Widget _buildTypeSelector() {
+    if (_classTypes.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return InputDecorator(
       decoration: const InputDecoration(
         labelText: 'Tipo *',
@@ -488,30 +531,30 @@ class _ClassFormPageState extends State<ClassFormPage> {
         border: OutlineInputBorder(),
       ),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<SwimClassType>(
-          value: _selectedType,
+        child: DropdownButton<ClassType>(
+          value: _selectedClassType,
           isExpanded: true,
           onChanged: _isLoading
               ? null
               : (value) {
                   if (value != null) {
                     setState(() {
-                      _selectedType = value;
+                      _selectedClassType = value;
                     });
                   }
                 },
-          items: SwimClassType.values.map((type) {
+          items: _classTypes.map((classType) {
             return DropdownMenuItem(
-              value: type,
+              value: classType,
               child: Row(
                 children: [
                   Icon(
-                    type == SwimClassType.classType ? Icons.school : Icons.pool,
+                    classType.iconData,
                     size: 20,
                     color: Colors.grey[700],
                   ),
                   const SizedBox(width: 8),
-                  Text(type.label),
+                  Text(classType.name),
                 ],
               ),
             );
@@ -520,4 +563,5 @@ class _ClassFormPageState extends State<ClassFormPage> {
       ),
     );
   }
+
 }

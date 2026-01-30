@@ -1,3 +1,5 @@
+import '../core/input_validator.dart';
+import '../core/security_helpers.dart';
 import '../core/supabase_client.dart';
 import '../models/swim_class.dart';
 
@@ -62,7 +64,14 @@ class ClassesService {
 
   /// Cria uma nova aula
   /// Retorna [ClassOperationResult] indicando sucesso ou falha
+  /// REQUER: Usuário autenticado como admin
   Future<ClassOperationResult> createClass(SwimClass swimClass) async {
+    // SEGURANÇA: Verifica se é admin
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return ClassOperationResult.error('Você não tem permissão para criar aulas');
+    }
+
     try {
       // Validações
       final validationError = _validateClass(swimClass);
@@ -88,7 +97,20 @@ class ClassesService {
 
   /// Atualiza uma aula existente
   /// Retorna [ClassOperationResult] indicando sucesso ou falha
+  /// REQUER: Usuário autenticado como admin
   Future<ClassOperationResult> updateClass(SwimClass swimClass) async {
+    // SEGURANÇA: Verifica se é admin
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return ClassOperationResult.error('Você não tem permissão para editar aulas');
+    }
+
+    // Validação de ID
+    final idError = InputValidator.validateId(swimClass.id, 'ID da aula');
+    if (idError != null) {
+      return ClassOperationResult.error(idError);
+    }
+
     try {
       // Validações
       final validationError = _validateClass(swimClass);
@@ -115,7 +137,20 @@ class ClassesService {
 
   /// Exclui uma aula
   /// Retorna [ClassOperationResult] indicando sucesso ou falha
+  /// REQUER: Usuário autenticado como admin
   Future<ClassOperationResult> deleteClass(String classId) async {
+    // SEGURANÇA: Verifica se é admin
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return ClassOperationResult.error('Você não tem permissão para excluir aulas');
+    }
+
+    // Validação de ID
+    final idError = InputValidator.validateId(classId, 'ID da aula');
+    if (idError != null) {
+      return ClassOperationResult.error(idError);
+    }
+
     try {
       await supabase.from('classes').delete().eq('id', classId);
 
@@ -127,8 +162,10 @@ class ClassesService {
 
   /// Valida os dados da aula
   String? _validateClass(SwimClass swimClass) {
-    if (swimClass.title.trim().isEmpty) {
-      return 'O título é obrigatório';
+    // Validação de título
+    final titleError = InputValidator.validateTitle(swimClass.title);
+    if (titleError != null) {
+      return titleError;
     }
 
     if (swimClass.endTime.isBefore(swimClass.startTime) ||
@@ -140,14 +177,23 @@ class ClassesService {
       return 'A capacidade deve ser maior que zero';
     }
 
+    if (swimClass.capacity > 1000) {
+      return 'Capacidade máxima excedida';
+    }
+
     if (swimClass.lanes <= 0) {
       return 'O número de raias deve ser maior que zero';
+    }
+
+    if (swimClass.lanes > 50) {
+      return 'Número máximo de raias excedido';
     }
 
     return null;
   }
 
   /// Trata erros e retorna mensagem apropriada
+  /// SEGURANÇA: Não expõe detalhes técnicos
   ClassOperationResult _handleError(Object e, String operation) {
     final errorMessage = e.toString().toLowerCase();
 
@@ -166,6 +212,7 @@ class ClassesService {
       );
     }
 
-    return ClassOperationResult.error('Erro ao $operation: $e');
+    // SEGURANÇA: Mensagem genérica sem expor detalhes técnicos
+    return ClassOperationResult.error('Não foi possível $operation. Tente novamente');
   }
 }

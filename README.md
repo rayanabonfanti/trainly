@@ -6,6 +6,7 @@ Sistema completo para gerenciamento de aulas de natação com suporte a reservas
 
 - [Funcionalidades](#funcionalidades)
 - [Regras de Negócio](#regras-de-negócio)
+- [Segurança](#segurança)
 - [Arquitetura](#arquitetura)
 - [Configuração](#configuração)
 - [Executando o Projeto](#executando-o-projeto)
@@ -27,6 +28,7 @@ Sistema completo para gerenciamento de aulas de natação com suporte a reservas
 
 ### Para Administradores
 - **Gerenciamento de Aulas**: CRUD completo de aulas
+- **Tipos de Aula Configuráveis**: Adicionar/remover tipos de aula dinamicamente
 - **Check-in**: Marcar presença dos alunos
 - **Dashboard**: Estatísticas de ocupação e frequência
 - **Gestão de Admins**: Promover usuários para administradores
@@ -61,6 +63,20 @@ O sistema possui regras de negócio **configuráveis dinamicamente** pelo admini
 4. Ajuste os valores conforme necessário
 5. Clique em **Salvar Configurações**
 
+### Tipos de Aula
+
+Os tipos de aula são **configuráveis pelo administrador** na página de configurações:
+
+| Tipo Padrão | Descrição |
+|-------------|-----------|
+| **Aula de Natação** | Aula com instrutor, turmas organizadas |
+| **Nado Livre** | Horário para prática livre na piscina |
+
+**O admin pode:**
+- Adicionar novos tipos (ex: Hidroginástica, Natação Infantil, etc.)
+- Editar nome e ícone de tipos existentes
+- Remover tipos (mínimo 1 obrigatório)
+
 ### Reservas
 
 | Regra | Descrição |
@@ -78,13 +94,7 @@ O sistema possui regras de negócio **configuráveis dinamicamente** pelo admini
 | **Deadline** | Configurável (padrão: 2 horas antes da aula) |
 | **Limite mensal** | Configurável (padrão: 2 cancelamentos por mês) |
 | **Registro** | Cancelamentos são registrados para controle de limite |
-
-### Tipos de Aula
-
-| Tipo | Descrição |
-|------|-----------|
-| **Aula (class)** | Aula com instrutor, turmas organizadas |
-| **Nado Livre (free)** | Horário para prática livre na piscina |
+| **Ownership** | Apenas o dono da reserva pode cancelá-la (admins podem cancelar qualquer uma) |
 
 ### Permissões
 
@@ -98,6 +108,56 @@ O sistema possui regras de negócio **configuráveis dinamicamente** pelo admini
 | Ver dashboard | ❌ | ✅ |
 | Promover admins | ❌ | ✅ |
 | Configurar regras | ❌ | ✅ |
+| Gerenciar tipos de aula | ❌ | ✅ |
+
+---
+
+## Segurança
+
+O sistema implementa múltiplas camadas de segurança:
+
+### Variáveis de Ambiente
+
+As credenciais do Supabase são armazenadas em variáveis de ambiente (`.env`), nunca hardcoded no código:
+
+```bash
+# .env (não commitar!)
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua-anon-key
+```
+
+### Validação de Input
+
+Todas as entradas do usuário são validadas:
+- IDs (formato UUID)
+- Emails, nomes, telefones
+- Tamanho e tipo de arquivos de upload
+- Proteção contra SQL injection e XSS
+
+### Verificação de Ownership
+
+Operações sensíveis verificam se o usuário é dono do recurso:
+- Cancelamento de reservas
+- Atualização de perfil
+
+### Proteção de Endpoints Admin
+
+Endpoints que expõem dados sensíveis verificam se o usuário é admin:
+- Lista de reservas com dados de alunos
+- Configurações do sistema
+- CRUD de aulas
+
+### Sanitização de Erros
+
+Mensagens de erro são sanitizadas para não expor detalhes internos do sistema.
+
+### Upload Seguro
+
+Uploads de avatar incluem:
+- Validação de extensão (jpg, png, gif, webp)
+- Limite de tamanho (5MB)
+- Sanitização de nome de arquivo
+- Proteção contra path traversal
 
 ---
 
@@ -109,12 +169,14 @@ O sistema possui regras de negócio **configuráveis dinamicamente** pelo admini
 - **Backend**: Supabase (PostgreSQL + Auth + Storage)
 - **State Management**: setState (stateful widgets)
 - **Tema**: Light/Dark mode com ThemeProvider
+- **Configuração**: flutter_dotenv para variáveis de ambiente
 
 ### Padrões
 
 - **Clean Architecture**: Separação em camadas (models, services, pages)
 - **Repository Pattern**: Services encapsulam acesso a dados
 - **Factory Pattern**: Constructors para criação de objetos
+- **Security Helpers**: Validação centralizada de inputs e permissões
 
 ---
 
@@ -132,20 +194,30 @@ git clone <repository-url>
 cd trainly
 ```
 
-### 2. Configure o Supabase
+### 2. Configure as variáveis de ambiente
 
-1. Crie um projeto no [Supabase](https://supabase.com)
-2. Copie a URL e Anon Key
-3. Atualize `lib/core/supabase_client.dart`:
+```bash
+# Copie o arquivo de exemplo
+cp .env.example .env
 
-```dart
-class SupabaseConfig {
-  static const String supabaseUrl = 'SUA_URL';
-  static const String supabaseAnonKey = 'SUA_ANON_KEY';
-}
+# Edite com suas credenciais
+nano .env
 ```
 
-### 3. Execute os scripts SQL
+Conteúdo do `.env`:
+```bash
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua-anon-key
+```
+
+> ⚠️ **IMPORTANTE**: Nunca commite o arquivo `.env` no Git!
+
+### 3. Configure o Supabase
+
+1. Crie um projeto no [Supabase](https://supabase.com)
+2. Copie a URL e Anon Key para o arquivo `.env`
+
+### 4. Execute os scripts SQL
 
 Execute na ordem no SQL Editor do Supabase:
 
@@ -157,7 +229,14 @@ Execute na ordem no SQL Editor do Supabase:
 6. `supabase/cancellations.sql` - Tabela de cancelamentos
 7. `supabase/business_settings.sql` - Configurações dinâmicas de negócio
 
-### 4. Configure o Storage (opcional)
+**Adicione também o suporte a tipos de aula dinâmicos:**
+
+```sql
+ALTER TABLE business_settings 
+ADD COLUMN IF NOT EXISTS class_types JSONB DEFAULT '[{"id":"class","name":"Aula de Natação","icon":"school"},{"id":"free","name":"Nado Livre","icon":"pool"}]';
+```
+
+### 5. Configure o Storage (opcional)
 
 Para upload de avatar, crie um bucket chamado `avatars` no Storage do Supabase com política pública.
 
@@ -199,6 +278,9 @@ flutter run -d iPhone
 # Android APK
 flutter build apk --release
 
+# Android App Bundle (Play Store)
+flutter build appbundle --release
+
 # iOS
 flutter build ios --release
 
@@ -219,6 +301,7 @@ test/
 │   └── theme_provider_test.dart   # Temas
 ├── models/
 │   ├── booking_test.dart          # Model de reserva
+│   ├── business_settings_test.dart# Model de configurações
 │   ├── class_item_test.dart       # Model de item de aula
 │   ├── swim_class_test.dart       # Model de aula
 │   ├── time_slot_test.dart        # Model de horário
@@ -228,7 +311,8 @@ test/
 │   ├── admin_service_test.dart    # Serviço admin
 │   ├── booking_service_test.dart  # Serviço de reservas
 │   ├── classes_service_test.dart  # Serviço de aulas
-│   └── profile_service_test.dart  # Serviço de perfil
+│   ├── profile_service_test.dart  # Serviço de perfil
+│   └── settings_service_test.dart # Serviço de configurações
 ├── widgets/
 │   └── skeleton_loading_test.dart # Widgets de loading
 └── helpers/
@@ -298,7 +382,7 @@ lib/
 │   ├── check_in_page.dart
 │   ├── dashboard_page.dart
 │   ├── manage_admins_page.dart
-│   └── settings_page.dart    # Configurações dinâmicas
+│   └── settings_page.dart    # Configurações + tipos de aula
 ├── attendance/               # Histórico de frequência
 │   └── attendance_history_page.dart
 ├── auth/                     # Autenticação
@@ -309,18 +393,21 @@ lib/
 ├── calendar/                 # Visualização calendário
 │   └── calendar_page.dart
 ├── classes/                  # Gerenciamento de aulas
-│   ├── class_form_page.dart
+│   ├── class_form_page.dart  # Formulário com tipos dinâmicos
 │   └── classes_list_page.dart
 ├── core/                     # Core do app
 │   ├── booking_rules.dart    # Regras de negócio
-│   ├── supabase_client.dart  # Cliente Supabase
+│   ├── input_validator.dart  # Validação de inputs
+│   ├── security_helpers.dart # Helpers de segurança
+│   ├── supabase_client.dart  # Cliente Supabase (usa .env)
 │   └── theme_provider.dart   # Gerenciador de tema
 ├── home/                     # Página inicial
 │   └── home_page.dart
 ├── models/                   # Models/DTOs
 │   ├── booking.dart
-│   ├── business_settings.dart # Configurações de negócio
+│   ├── business_settings.dart # Configurações + tipos de aula
 │   ├── class_item.dart
+│   ├── class_type.dart       # Tipos de aula configuráveis
 │   ├── swim_class.dart
 │   ├── time_slot.dart
 │   ├── training_type.dart
@@ -329,14 +416,14 @@ lib/
 │   └── profile_page.dart
 ├── services/                 # Camada de serviços
 │   ├── admin_service.dart
-│   ├── booking_service.dart
-│   ├── classes_service.dart
-│   ├── profile_service.dart
-│   ├── settings_service.dart # Serviço de configurações
+│   ├── booking_service.dart  # Com verificação de ownership
+│   ├── classes_service.dart  # Com verificação de admin
+│   ├── profile_service.dart  # Com validação de upload
+│   ├── settings_service.dart # Com tipos de aula
 │   └── supabase_service.dart
 ├── widgets/                  # Widgets reutilizáveis
 │   └── skeleton_loading.dart
-└── main.dart                 # Entry point
+└── main.dart                 # Entry point (carrega .env)
 ```
 
 ---
@@ -357,12 +444,12 @@ lib/
 
 | Tabela | Descrição |
 |--------|-----------|
-| `profiles` | Perfis de usuários (nome, telefone, avatar) |
+| `profiles` | Perfis de usuários (nome, telefone, avatar, role) |
 | `classes` | Aulas agendadas |
 | `bookings` | Reservas dos usuários |
 | `cancellations` | Registro de cancelamentos |
 | `admins` | Relação de administradores |
-| `business_settings` | Configurações dinâmicas de regras de negócio |
+| `business_settings` | Configurações dinâmicas + tipos de aula |
 
 ---
 
@@ -373,11 +460,38 @@ dependencies:
   flutter:
     sdk: flutter
   supabase_flutter: ^2.8.0      # Backend
-  table_calendar: ^3.1.2         # Calendário
-  shimmer: ^3.0.0                # Loading skeleton
-  fl_chart: ^0.69.2              # Gráficos
-  image_picker: ^1.1.2           # Seletor de imagem
-  shared_preferences: ^2.3.3     # Armazenamento local
+  flutter_dotenv: ^5.1.0        # Variáveis de ambiente
+  table_calendar: ^3.1.2        # Calendário
+  shimmer: ^3.0.0               # Loading skeleton
+  fl_chart: ^0.69.2             # Gráficos
+  image_picker: ^1.1.2          # Seletor de imagem
+  shared_preferences: ^2.3.3    # Armazenamento local
+  mask_text_input_formatter: ^2.9.0 # Máscaras de input
+```
+
+---
+
+## Deploy para Play Store
+
+### Checklist de Segurança
+
+Antes de publicar na Play Store, verifique:
+
+- [ ] Arquivo `.env` está no `.gitignore`
+- [ ] Credenciais do Supabase não estão hardcoded
+- [ ] Anon Key foi rotacionada (se exposta anteriormente)
+- [ ] RLS policies estão configuradas no Supabase
+- [ ] Upload de arquivos tem validação de tipo e tamanho
+- [ ] Mensagens de erro não expõem detalhes técnicos
+
+### Build para Play Store
+
+```bash
+# Gerar App Bundle
+flutter build appbundle --release
+
+# O arquivo estará em:
+# build/app/outputs/bundle/release/app-release.aab
 ```
 
 ---

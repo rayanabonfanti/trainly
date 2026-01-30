@@ -1,4 +1,6 @@
 import '../core/booking_rules.dart';
+import '../core/input_validator.dart';
+import '../core/security_helpers.dart';
 import '../core/supabase_client.dart';
 import '../models/booking.dart';
 import '../models/swim_class.dart';
@@ -220,6 +222,12 @@ class BookingService {
 
   /// Cria uma reserva para uma aula
   Future<BookingResult> createBooking(String classId) async {
+    // Validação de input
+    final idError = InputValidator.validateId(classId, 'ID da aula');
+    if (idError != null) {
+      return BookingResult.error(idError);
+    }
+
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
       return BookingResult.error('Usuário não autenticado');
@@ -266,7 +274,7 @@ class BookingService {
       // Se não encontrou relacionamento (tabela existe mas sem dados ainda)
       if (errorMessage.contains('could not find a relationship')) {
         return BookingResult.error(
-          'Sistema de reservas ainda não configurado. Execute o SQL de bookings no Supabase.',
+          'Sistema de reservas ainda não configurado. Entre em contato com o administrador.',
         );
       }
       
@@ -391,15 +399,39 @@ class BookingService {
   }
 
   /// Cancela uma reserva
-  /// Verifica deadline de cancelamento e limite de cancelamentos
+  /// Verifica ownership, deadline de cancelamento e limite de cancelamentos
   Future<BookingResult> cancelBooking(String bookingId, {bool forceCancel = false}) async {
+    // Validação de input
+    final idError = InputValidator.validateId(bookingId, 'ID da reserva');
+    if (idError != null) {
+      return BookingResult.error(idError);
+    }
+
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      return BookingResult.error('Usuário não autenticado');
+    }
+
     try {
       // Busca a reserva primeiro (sem join)
       final bookingResponse = await supabase
           .from('bookings')
           .select()
           .eq('id', bookingId)
-          .single();
+          .maybeSingle();
+
+      if (bookingResponse == null) {
+        return BookingResult.error('Reserva não encontrada');
+      }
+
+      // SEGURANÇA: Verifica se o usuário é o dono da reserva
+      final bookingUserId = bookingResponse['user_id'] as String;
+      final isOwner = bookingUserId == userId;
+      final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+
+      if (!isOwner && !isAdmin) {
+        return BookingResult.error('Você não tem permissão para cancelar esta reserva');
+      }
 
       final classId = bookingResponse['class_id'] as String;
 
@@ -416,7 +448,8 @@ class BookingService {
         // Aula pode não existir mais
       }
 
-      if (classData != null && !forceCancel) {
+      // Regras de cancelamento só se aplicam ao dono (não admin forçando)
+      if (classData != null && !forceCancel && isOwner && !isAdmin) {
         final startTime = DateTime.parse(classData['start_time'] as String);
         
         // Verifica deadline de cancelamento
@@ -437,9 +470,8 @@ class BookingService {
         }
       }
 
-      // Registra o cancelamento para controle de limite
-      final userId = supabase.auth.currentUser?.id;
-      if (userId != null) {
+      // Registra o cancelamento para controle de limite (apenas para o dono)
+      if (isOwner) {
         try {
           await supabase.from('cancellations').insert({
             'user_id': userId,
@@ -547,7 +579,20 @@ class BookingService {
   }
 
   /// Busca reservas de uma aula específica (para admin ver quem reservou)
+  /// REQUER: Usuário autenticado como admin
   Future<List<Map<String, dynamic>>> fetchBookingsForClass(String classId) async {
+    // Validação de input
+    final idError = InputValidator.validateId(classId, 'ID da aula');
+    if (idError != null) {
+      return [];
+    }
+
+    // SEGURANÇA: Verifica se é admin antes de expor dados de usuários
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return [];
+    }
+
     try {
       final response = await supabase
           .from('bookings')
@@ -569,10 +614,23 @@ class BookingService {
   }
 
   /// Busca todas as reservas de múltiplas aulas (para admin)
+  /// REQUER: Usuário autenticado como admin
   Future<Map<String, List<Map<String, dynamic>>>> fetchAllBookingsByClass(
     List<String> classIds,
   ) async {
     if (classIds.isEmpty) return {};
+
+    // Validação de input
+    final idsError = InputValidator.validateIdList(classIds, 'IDs das aulas');
+    if (idsError != null) {
+      return {};
+    }
+
+    // SEGURANÇA: Verifica se é admin antes de expor dados de usuários
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return {};
+    }
 
     try {
       final response = await supabase
@@ -603,6 +661,12 @@ class BookingService {
 
   /// Verifica se o usuário tem reserva para uma aula específica
   Future<bool> hasBookingForClass(String classId) async {
+    // Validação de input
+    final idError = InputValidator.validateId(classId, 'ID da aula');
+    if (idError != null) {
+      return false;
+    }
+
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return false;
 
@@ -720,7 +784,14 @@ class BookingService {
 
   /// Busca todas as reservas futuras com informações do aluno (para admin)
   /// Retorna lista de reservas agrupadas por aluno com contagem de reservas restantes
+  /// REQUER: Usuário autenticado como admin
   Future<List<StudentBookingInfo>> fetchAllBookingsWithStudentInfo() async {
+    // SEGURANÇA: Verifica se é admin antes de expor dados de usuários
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return [];
+    }
+
     try {
       final now = DateTime.now();
       final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
@@ -853,6 +924,7 @@ class BookingService {
   }
 
   /// Trata erros e retorna mensagem apropriada
+  /// SEGURANÇA: Não expõe detalhes técnicos do erro
   BookingResult _handleError(Object e) {
     final errorMessage = e.toString().toLowerCase();
 
@@ -880,10 +952,11 @@ class BookingService {
         errorMessage.contains('denied') ||
         errorMessage.contains('rls')) {
       return BookingResult.error(
-        'Não foi possível realizar a reserva. Verifique as regras.',
+        'Você não tem permissão para realizar esta ação',
       );
     }
 
-    return BookingResult.error('Erro ao processar reserva: $e');
+    // SEGURANÇA: Retorna mensagem genérica sem expor detalhes técnicos
+    return BookingResult.error('Não foi possível processar a reserva. Tente novamente');
   }
 }

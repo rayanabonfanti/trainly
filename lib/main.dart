@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,6 +13,9 @@ final themeProvider = ThemeProvider();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Carrega variáveis de ambiente do arquivo .env
+  await dotenv.load(fileName: '.env');
 
   await Supabase.initialize(
     url: SupabaseConfig.supabaseUrl,

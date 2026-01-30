@@ -1,6 +1,8 @@
-/// Tipo de aula
+import 'class_type.dart';
+
+/// Tipo de aula (enum para compatibilidade com código existente)
 enum SwimClassType {
-  classType('class', 'Aula'),
+  classType('class', 'Aula de Natação'),
   free('free', 'Nado Livre');
 
   final String value;
@@ -11,6 +13,14 @@ enum SwimClassType {
   static SwimClassType fromString(String value) {
     return SwimClassType.values.firstWhere(
       (e) => e.value == value,
+      orElse: () => SwimClassType.classType,
+    );
+  }
+
+  /// Converte de ClassType para SwimClassType
+  static SwimClassType fromClassType(ClassType classType) {
+    return SwimClassType.values.firstWhere(
+      (e) => e.value == classType.id,
       orElse: () => SwimClassType.classType,
     );
   }
