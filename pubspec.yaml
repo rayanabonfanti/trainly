@@ -31,12 +31,35 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Localizações (necessário para DatePicker, TimePicker, etc.)
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
   # Supabase para autenticação e backend
   supabase_flutter: ^2.8.0
+
+  # Calendário visual
+  table_calendar: ^3.1.2
+
+  # Loading skeleton
+  shimmer: ^3.0.0
+
+  # Gráficos para dashboard
+  fl_chart: ^0.69.2
+
+  # Seletor de imagem para perfil
+  image_picker: ^1.1.2
+
+  # Armazenamento local para configurações
+  shared_preferences: ^2.3.3
+
+  # Máscara para inputs (telefone, etc.)
+  mask_text_input_formatter: ^2.9.0
 
 dev_dependencies:
   flutter_test:
