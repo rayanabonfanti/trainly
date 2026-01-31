@@ -6,6 +6,7 @@ class Booking {
   final String userId;
   final String classId;
   final DateTime createdAt;
+  final bool? checkedIn;
   final SwimClass? swimClass;
 
   Booking({
@@ -13,6 +14,7 @@ class Booking {
     required this.userId,
     required this.classId,
     required this.createdAt,
+    this.checkedIn,
     this.swimClass,
   });
 
@@ -22,6 +24,7 @@ class Booking {
       userId: json['user_id'] as String,
       classId: json['class_id'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
+      checkedIn: json['checked_in'] as bool?,
       swimClass: json['classes'] != null
           ? SwimClass.fromJson(json['classes'] as Map<String, dynamic>)
           : null,
@@ -33,6 +36,25 @@ class Booking {
       'user_id': userId,
       'class_id': classId,
     };
+  }
+
+  /// Copia o booking com novos valores
+  Booking copyWith({
+    String? id,
+    String? userId,
+    String? classId,
+    DateTime? createdAt,
+    bool? checkedIn,
+    SwimClass? swimClass,
+  }) {
+    return Booking(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      classId: classId ?? this.classId,
+      createdAt: createdAt ?? this.createdAt,
+      checkedIn: checkedIn ?? this.checkedIn,
+      swimClass: swimClass ?? this.swimClass,
+    );
   }
 }
 
@@ -70,5 +92,12 @@ class SwimClassWithAvailability {
     if (isFull) return 'Lotada';
     if (availableSpots == 1) return '1 vaga';
     return '$availableSpots vagas';
+  }
+
+  /// Texto detalhado de disponibilidade para admin
+  String get detailedAvailabilityText {
+    final total = swimClass.capacity;
+    if (isFull) return 'Lotada ($bookedCount/$total)';
+    return '$bookedCount reserva${bookedCount != 1 ? 's' : ''} • $availableSpots restante${availableSpots != 1 ? 's' : ''}';
   }
 }

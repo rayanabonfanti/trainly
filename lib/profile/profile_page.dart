@@ -8,7 +8,7 @@ import '../core/theme_provider.dart';
 import '../models/user_profile.dart';
 import '../services/profile_service.dart';
 
-/// Página de Perfil do Usuário
+/// Página de Perfil do Usuário - Design moderno
 class ProfilePage extends StatefulWidget {
   final ThemeProvider themeProvider;
 
@@ -21,7 +21,11 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends State<ProfilePage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  
   final _profileService = ProfileService();
   final _formKey = GlobalKey<FormState>();
 
@@ -43,11 +47,19 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
     _loadProfile();
   }
 
   @override
   void dispose() {
+    _animationController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     super.dispose();
@@ -75,6 +87,7 @@ class _ProfilePageState extends State<ProfilePage> {
           }
           _isLoading = false;
         });
+        _animationController.forward();
       }
     } catch (e) {
       if (mounted) {
@@ -158,12 +171,57 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Meu Perfil'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colorScheme.primary.withOpacity(0.1),
+              colorScheme.surface,
+            ],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildCustomAppBar(context, colorScheme),
+              Expanded(child: _buildBody()),
+            ],
+          ),
+        ),
       ),
-      body: _buildBody(),
+    );
+  }
+
+  Widget _buildCustomAppBar(BuildContext context, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_ios_new),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            'Meu Perfil',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -191,22 +249,25 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-            _buildAvatar(),
-            const SizedBox(height: 32),
-            _buildEmailCard(),
-            const SizedBox(height: 24),
-            _buildFormFields(),
-            const SizedBox(height: 32),
-            _buildThemeSection(),
-            const SizedBox(height: 32),
-            _buildSaveButton(),
-          ],
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              _buildAvatar(),
+              const SizedBox(height: 32),
+              _buildEmailCard(),
+              const SizedBox(height: 24),
+              _buildFormFields(),
+              const SizedBox(height: 32),
+              _buildThemeSection(),
+              const SizedBox(height: 32),
+              _buildSaveButton(),
+            ],
+          ),
         ),
       ),
     );

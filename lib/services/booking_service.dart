@@ -49,11 +49,13 @@ class StudentBookingInfo {
   final String classType;
   final DateTime classStartTime;
   final DateTime classEndTime;
+  final int classCapacity;
   final String studentId;
   final String studentName;
   final String studentEmail;
   final int bookingsThisWeek;
   final int remainingBookings; // -1 = sem limite
+  final bool checkedIn;
 
   StudentBookingInfo({
     required this.bookingId,
@@ -62,11 +64,13 @@ class StudentBookingInfo {
     required this.classType,
     required this.classStartTime,
     required this.classEndTime,
+    required this.classCapacity,
     required this.studentId,
     required this.studentName,
     required this.studentEmail,
     required this.bookingsThisWeek,
     required this.remainingBookings,
+    this.checkedIn = false,
   });
 
   String get formattedDate {
@@ -88,6 +92,47 @@ class StudentBookingInfo {
     if (remainingBookings == 0) return 'Limite atingido';
     if (remainingBookings == 1) return '1 restante';
     return '$remainingBookings restantes';
+  }
+}
+
+/// Informações de uma aula com contagem de reservas (para admin)
+class ClassWithBookingsInfo {
+  final String classId;
+  final String classTitle;
+  final String classType;
+  final DateTime classStartTime;
+  final DateTime classEndTime;
+  final int capacity;
+  final int bookedCount;
+  final int checkedInCount;
+  final List<StudentBookingInfo> students;
+
+  ClassWithBookingsInfo({
+    required this.classId,
+    required this.classTitle,
+    required this.classType,
+    required this.classStartTime,
+    required this.classEndTime,
+    required this.capacity,
+    required this.bookedCount,
+    required this.checkedInCount,
+    required this.students,
+  });
+
+  int get availableSpots => capacity - bookedCount;
+  
+  String get formattedDate {
+    final day = classStartTime.day.toString().padLeft(2, '0');
+    final month = classStartTime.month.toString().padLeft(2, '0');
+    return '$day/$month';
+  }
+
+  String get formattedTime {
+    final startHour = classStartTime.hour.toString().padLeft(2, '0');
+    final startMin = classStartTime.minute.toString().padLeft(2, '0');
+    final endHour = classEndTime.hour.toString().padLeft(2, '0');
+    final endMin = classEndTime.minute.toString().padLeft(2, '0');
+    return '$startHour:$startMin - $endHour:$endMin';
   }
 }
 
@@ -256,9 +301,6 @@ class BookingService {
         'class_id': classId,
       });
 
-      // Recarrega as configurações após operação bem-sucedida
-      await BookingRules.refresh();
-
       return BookingResult.success('Reserva realizada com sucesso!');
     } catch (e) {
       final errorMessage = e.toString().toLowerCase();
@@ -282,13 +324,32 @@ class BookingService {
     }
   }
 
+  /// Alterna o status de check-in de uma reserva
+  /// REQUER: Usuário autenticado como admin
+  Future<bool> toggleCheckIn(String bookingId, bool checkedIn) async {
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return false;
+    }
+
+    try {
+      await supabase
+          .from('bookings')
+          .update({'checked_in': checkedIn})
+          .eq('id', bookingId);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Busca reservas do usuário atual
   Future<List<Booking>> fetchMyBookings() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return [];
 
     try {
-      // Busca as reservas do usuário
+      // Busca as reservas do usuário (incluindo checked_in)
       final bookingsResponse = await supabase
           .from('bookings')
           .select()
@@ -600,6 +661,7 @@ class BookingService {
             id,
             user_id,
             created_at,
+            checked_in,
             profiles:user_id (
               email,
               name
@@ -640,6 +702,7 @@ class BookingService {
             class_id,
             user_id,
             created_at,
+            checked_in,
             profiles:user_id (
               email,
               name
@@ -796,10 +859,10 @@ class BookingService {
       final now = DateTime.now();
       final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
 
-      // Busca todas as reservas
+      // Busca todas as reservas (incluindo checked_in)
       final bookingsResponse = await supabase
           .from('bookings')
-          .select('id, user_id, class_id, created_at');
+          .select('id, user_id, class_id, created_at, checked_in');
 
       final bookings = bookingsResponse as List;
       if (bookings.isEmpty) return [];
@@ -886,6 +949,8 @@ class BookingService {
         final remainingBookings = BookingRules.bookingLimitEnabled 
             ? (maxBookings - bookingsThisWeek).clamp(0, maxBookings)
             : -1; // -1 indica sem limite
+        
+        final checkedIn = booking['checked_in'] as bool? ?? false;
 
         result.add(StudentBookingInfo(
           bookingId: booking['id'] as String,
@@ -894,11 +959,13 @@ class BookingService {
           classType: classData['type'] as String,
           classStartTime: DateTime.parse(classData['start_time'] as String),
           classEndTime: DateTime.parse(classData['end_time'] as String),
+          classCapacity: classData['capacity'] as int? ?? 0,
           studentId: userId,
           studentName: studentName,
           studentEmail: studentEmail,
           bookingsThisWeek: bookingsThisWeek,
           remainingBookings: remainingBookings,
+          checkedIn: checkedIn,
         ));
       }
 
@@ -921,6 +988,143 @@ class BookingService {
       }).join(' ');
     }
     return email;
+  }
+
+  /// Busca aulas futuras com contagem de reservas (para admin)
+  /// Retorna lista de aulas agrupadas com informações de reservas
+  /// REQUER: Usuário autenticado como admin
+  Future<List<ClassWithBookingsInfo>> fetchClassesWithBookings() async {
+    // SEGURANÇA: Verifica se é admin antes de expor dados de usuários
+    final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
+    if (!isAdmin) {
+      return [];
+    }
+
+    try {
+      final now = DateTime.now();
+      final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+
+      // Busca aulas futuras
+      final classesResponse = await supabase
+          .from('classes')
+          .select()
+          .gte('start_time', now.toIso8601String())
+          .order('start_time', ascending: true);
+
+      final classes = classesResponse as List;
+      if (classes.isEmpty) return [];
+
+      final classIds = classes.map((c) => c['id'] as String).toList();
+
+      // Busca todas as reservas destas aulas (incluindo checked_in)
+      final bookingsResponse = await supabase
+          .from('bookings')
+          .select('id, user_id, class_id, created_at, checked_in')
+          .inFilter('class_id', classIds);
+
+      final bookings = bookingsResponse as List;
+
+      // Busca perfis dos usuários
+      final userIds = bookings
+          .map((b) => b['user_id'] as String)
+          .toSet()
+          .toList();
+
+      final profilesMap = <String, Map<String, dynamic>>{};
+      if (userIds.isNotEmpty) {
+        try {
+          final profilesResponse = await supabase
+              .from('profiles')
+              .select('id, email, name')
+              .inFilter('id', userIds);
+
+          for (final profile in profilesResponse as List) {
+            profilesMap[profile['id'] as String] = profile;
+          }
+        } catch (e) {
+          // Tabela profiles pode não ter todos os dados
+        }
+      }
+
+      // Agrupa bookings por class_id
+      final bookingsByClass = <String, List<Map<String, dynamic>>>{};
+      for (final booking in bookings) {
+        final classId = booking['class_id'] as String;
+        bookingsByClass.putIfAbsent(classId, () => []);
+        bookingsByClass[classId]!.add(booking as Map<String, dynamic>);
+      }
+
+      // Conta reservas por usuário para calcular limites
+      final userBookingsCount = <String, int>{};
+      for (final booking in bookings) {
+        final userId = booking['user_id'] as String;
+        userBookingsCount[userId] = (userBookingsCount[userId] ?? 0) + 1;
+      }
+
+      final maxBookings = BookingRules.bookingLimitEnabled 
+          ? BookingRules.maxBookingsPerWeek 
+          : 999;
+
+      // Converte para lista de ClassWithBookingsInfo
+      final result = <ClassWithBookingsInfo>[];
+      for (final classData in classes) {
+        final classId = classData['id'] as String;
+        final classBookings = bookingsByClass[classId] ?? [];
+
+        // Converte bookings para StudentBookingInfo
+        final students = <StudentBookingInfo>[];
+        int checkedInCount = 0;
+
+        for (final booking in classBookings) {
+          final userId = booking['user_id'] as String;
+          final profile = profilesMap[userId];
+          final checkedIn = booking['checked_in'] as bool? ?? false;
+          
+          if (checkedIn) checkedInCount++;
+
+          final studentName = profile?['name'] as String? ?? 
+              _extractNameFromEmail(profile?['email'] as String? ?? 'Aluno');
+          final studentEmail = profile?['email'] as String? ?? '';
+
+          final bookingsThisWeek = userBookingsCount[userId] ?? 0;
+          final remainingBookings = BookingRules.bookingLimitEnabled 
+              ? (maxBookings - bookingsThisWeek).clamp(0, maxBookings)
+              : -1;
+
+          students.add(StudentBookingInfo(
+            bookingId: booking['id'] as String,
+            classId: classId,
+            classTitle: classData['title'] as String,
+            classType: classData['type'] as String,
+            classStartTime: DateTime.parse(classData['start_time'] as String),
+            classEndTime: DateTime.parse(classData['end_time'] as String),
+            classCapacity: classData['capacity'] as int? ?? 0,
+            studentId: userId,
+            studentName: studentName,
+            studentEmail: studentEmail,
+            bookingsThisWeek: bookingsThisWeek,
+            remainingBookings: remainingBookings,
+            checkedIn: checkedIn,
+          ));
+        }
+
+        result.add(ClassWithBookingsInfo(
+          classId: classId,
+          classTitle: classData['title'] as String,
+          classType: classData['type'] as String,
+          classStartTime: DateTime.parse(classData['start_time'] as String),
+          classEndTime: DateTime.parse(classData['end_time'] as String),
+          capacity: classData['capacity'] as int? ?? 0,
+          bookedCount: classBookings.length,
+          checkedInCount: checkedInCount,
+          students: students,
+        ));
+      }
+
+      return result;
+    } catch (e) {
+      return [];
+    }
   }
 
   /// Trata erros e retorna mensagem apropriada

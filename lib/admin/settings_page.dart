@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/booking_rules.dart';
 import '../models/business_settings.dart';
 import '../models/class_type.dart';
 import '../services/settings_service.dart';
@@ -104,14 +105,51 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _saveSettings() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Validação lógica adicional
+    final maxCancellations = int.tryParse(_maxCancellationsController.text) ?? 0;
+    final maxBookings = int.tryParse(_maxBookingsController.text) ?? 0;
+
+    if (_cancellationLimitEnabled && maxCancellations < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('O limite de cancelamentos deve ser pelo menos 1 quando habilitado'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_bookingLimitEnabled && maxBookings < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('O limite de reservas deve ser pelo menos 1 quando habilitado'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_classTypes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('É necessário ter pelo menos um tipo de aula'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
       final newSettings = BusinessSettings(
         cancellationDeadlineHours: int.parse(_cancellationDeadlineController.text),
-        maxCancellationsPerMonth: int.parse(_maxCancellationsController.text),
+        maxCancellationsPerMonth: maxCancellations,
         cancellationLimitEnabled: _cancellationLimitEnabled,
-        maxBookingsPerWeek: int.parse(_maxBookingsController.text),
+        maxBookingsPerWeek: maxBookings,
         bookingLimitEnabled: _bookingLimitEnabled,
         minBookingAdvanceHours: int.parse(_minAdvanceController.text),
         defaultClassCapacity: int.parse(_defaultCapacityController.text),
@@ -120,6 +158,12 @@ class _SettingsPageState extends State<SettingsPage> {
       );
 
       final result = await _settingsService.updateSettings(newSettings);
+
+      if (result.success) {
+        // IMPORTANTE: Atualiza o cache global das regras de negócio
+        // para que as novas configurações sejam aplicadas imediatamente
+        await BookingRules.refresh();
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -132,7 +176,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
         if (result.success) {
           setState(() {
-            _settings = newSettings;
+            _settings = newSettings.copyWith(updatedAt: DateTime.now());
           });
         }
       }

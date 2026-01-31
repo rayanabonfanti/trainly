@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../admin/admin_panel_page.dart';
+import '../admin/class_detail_page.dart';
 import '../attendance/attendance_history_page.dart';
 import '../bookings/my_bookings_page.dart';
 import '../calendar/calendar_page.dart';
@@ -16,6 +17,7 @@ import '../services/booking_service.dart';
 import '../widgets/skeleton_loading.dart';
 
 /// Tela Home - exibe aulas do dia seguinte com opção de reserva
+/// Redesenhada com Bottom Navigation Bar para melhor UX
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -28,11 +30,12 @@ class _HomePageState extends State<HomePage> {
   final _adminService = AdminService();
 
   List<SwimClassWithAvailability>? _classes;
-  List<StudentBookingInfo>? _adminBookings;
+  List<ClassWithBookingsInfo>? _adminClasses;
   String? _error;
   bool _isLoading = true;
   bool _isAdmin = false;
   Set<String> _loadingBookings = {};
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -50,12 +53,12 @@ class _HomePageState extends State<HomePage> {
       final isAdmin = await _adminService.isCurrentUserAdmin();
       
       if (isAdmin) {
-        // Admin: carrega lista de reservas com info do aluno
-        final bookings = await _bookingService.fetchAllBookingsWithStudentInfo();
+        // Admin: carrega aulas com contagem de reservas
+        final classesWithBookings = await _bookingService.fetchClassesWithBookings();
         if (mounted) {
           setState(() {
             _isAdmin = true;
-            _adminBookings = bookings;
+            _adminClasses = classesWithBookings;
             _isLoading = false;
           });
         }
@@ -97,6 +100,7 @@ class _HomePageState extends State<HomePage> {
             content: Text(result.message),
             backgroundColor: result.success ? Colors.green : Colors.red,
             behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
           ),
         );
 
@@ -113,170 +117,400 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _onNavTap(int index) {
+    if (index == _currentIndex) return;
+    
+    switch (index) {
+      case 0:
+        setState(() => _currentIndex = 0);
+        break;
+      case 1:
+        _navigateToCalendar(context);
+        break;
+      case 2:
+        if (_isAdmin) {
+          _navigateToAdminPanel(context);
+        } else {
+          _navigateToMyBookings(context);
+        }
+        break;
+      case 3:
+        _navigateToProfile(context);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = supabase.auth.currentUser;
     final userEmail = user?.email ?? 'Email não disponível';
     final tomorrow = DateTime.now().add(const Duration(days: 1));
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Trainly'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_month),
-            onPressed: () => _navigateToCalendar(context),
-            tooltip: 'Calendário',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-            tooltip: 'Atualizar',
-          ),
-        ],
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildModernHeader(userEmail, tomorrow, colorScheme),
+            _buildQuickActions(colorScheme),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
-      drawer: _buildDrawer(userEmail),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      bottomNavigationBar: _buildBottomNav(colorScheme),
+      floatingActionButton: !_isAdmin
+          ? FloatingActionButton.extended(
+              onPressed: () => _navigateToClasses(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Reservar'),
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildModernHeader(String userEmail, DateTime date, ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Row(
         children: [
-          _buildHeader(userEmail, tomorrow),
-          Expanded(child: _buildBody()),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _getGreeting(),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _extractName(userEmail),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          _buildNotificationButton(colorScheme),
+          const SizedBox(width: 8),
+          _buildAvatarButton(userEmail, colorScheme),
         ],
       ),
     );
   }
 
-  Widget _buildDrawer(String userEmail) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.primary,
-                  Theme.of(context).colorScheme.primary.withOpacity(0.8),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  }
+
+  Widget _buildNotificationButton(ColorScheme colorScheme) {
+    return IconButton(
+      onPressed: _loadData,
+      icon: const Icon(Icons.refresh_rounded),
+      style: IconButton.styleFrom(
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarButton(String userEmail, ColorScheme colorScheme) {
+    return GestureDetector(
+      onTap: () => _showProfileMenu(context),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            _extractName(userEmail)[0].toUpperCase(),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showProfileMenu(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.outline.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.white.withOpacity(0.2),
-                  child: Text(
-                    _extractName(userEmail)[0].toUpperCase(),
+            const SizedBox(height: 24),
+            _buildMenuOption(
+              icon: Icons.person_outline,
+              title: 'Meu Perfil',
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToProfile(context);
+              },
+              colorScheme: colorScheme,
+            ),
+            if (!_isAdmin)
+              _buildMenuOption(
+                icon: Icons.history,
+                title: 'Histórico de Frequência',
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToAttendance(context);
+                },
+                colorScheme: colorScheme,
+              ),
+            if (_isAdmin)
+              _buildMenuOption(
+                icon: Icons.admin_panel_settings,
+                title: 'Painel Admin',
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToAdminPanel(context);
+                },
+                colorScheme: colorScheme,
+                isHighlighted: true,
+              ),
+            const Divider(height: 32),
+            _buildMenuOption(
+              icon: Icons.logout,
+              title: 'Sair',
+              onTap: () {
+                Navigator.pop(context);
+                _signOut(context);
+              },
+              colorScheme: colorScheme,
+              isDestructive: true,
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenuOption({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    required ColorScheme colorScheme,
+    bool isDestructive = false,
+    bool isHighlighted = false,
+  }) {
+    final color = isDestructive
+        ? Colors.red
+        : isHighlighted
+            ? colorScheme.primary
+            : colorScheme.onSurface;
+
+    return ListTile(
+      onTap: onTap,
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: color,
+          fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w500,
+        ),
+      ),
+      trailing: Icon(
+        Icons.chevron_right,
+        color: color.withOpacity(0.5),
+      ),
+      contentPadding: EdgeInsets.zero,
+    );
+  }
+
+  Widget _buildQuickActions(ColorScheme colorScheme) {
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              colorScheme.primary,
+              colorScheme.primary.withOpacity(0.8),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.primary.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _isAdmin ? Icons.people : Icons.pool,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isAdmin ? 'Reservas dos Alunos' : 'Aulas de Amanhã',
                     style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
                       color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _extractName(userEmail),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                  const SizedBox(height: 4),
+                  Text(
+                    _isAdmin
+                        ? '${_getTotalBookings()} reserva(s) em ${_adminClasses?.length ?? 0} aula(s)'
+                        : _formatDateBR(tomorrow),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 13,
+                    ),
                   ),
-                ),
-                Text(
-                  userEmail,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.home),
-            title: const Text('Início'),
-            selected: true,
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.calendar_month),
-            title: const Text('Calendário'),
-            onTap: () {
-              Navigator.pop(context);
-              _navigateToCalendar(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.pool),
-            title: const Text('Todas as Aulas'),
-            onTap: () {
-              Navigator.pop(context);
-              _navigateToClasses(context);
-            },
-          ),
-          if (!_isAdmin) ...[
-            ListTile(
-              leading: const Icon(Icons.bookmark),
-              title: const Text('Minhas Reservas'),
-              onTap: () {
-                Navigator.pop(context);
-                _navigateToMyBookings(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Histórico de Frequência'),
-              onTap: () {
-                Navigator.pop(context);
-                _navigateToAttendance(context);
-              },
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: IconButton(
+                onPressed: () => _navigateToCalendar(context),
+                icon: const Icon(Icons.calendar_today, size: 18),
+                color: Colors.white,
+                padding: EdgeInsets.zero,
+              ),
             ),
           ],
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.person),
-            title: const Text('Meu Perfil'),
-            onTap: () {
-              Navigator.pop(context);
-              _navigateToProfile(context);
-            },
-          ),
-          if (_isAdmin) ...[
-            const Divider(),
-            ListTile(
-              leading: Icon(
-                Icons.admin_panel_settings,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              title: Text(
-                'Painel Admin',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _navigateToAdminPanel(context);
-              },
-            ),
-          ],
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Sair', style: TextStyle(color: Colors.red)),
-            onTap: () {
-              Navigator.pop(context);
-              _signOut(context);
-            },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNav(ColorScheme colorScheme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
           ),
         ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, Icons.home_rounded, 'Início', colorScheme),
+              _buildNavItem(1, Icons.calendar_month_rounded, 'Calendário', colorScheme),
+              const SizedBox(width: 60), // Espaço para o FAB
+              _buildNavItem(
+                2,
+                _isAdmin ? Icons.admin_panel_settings_rounded : Icons.bookmark_rounded,
+                _isAdmin ? 'Admin' : 'Reservas',
+                colorScheme,
+              ),
+              _buildNavItem(3, Icons.person_rounded, 'Perfil', colorScheme),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label, ColorScheme colorScheme) {
+    final isSelected = index == _currentIndex;
+    
+    return InkWell(
+      onTap: () => _onNavTap(index),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.5),
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -314,12 +548,12 @@ class _HomePageState extends State<HomePage> {
       return _buildErrorState();
     }
 
-    // Admin: mostra lista de reservas
+    // Admin: mostra lista de aulas com reservas
     if (_isAdmin) {
-      if (_adminBookings == null || _adminBookings!.isEmpty) {
+      if (_adminClasses == null || _adminClasses!.isEmpty) {
         return _buildAdminEmptyState();
       }
-      return _buildAdminBookingsList();
+      return _buildAdminClassesList();
     }
 
     // Aluno: mostra aulas disponíveis
@@ -328,6 +562,11 @@ class _HomePageState extends State<HomePage> {
     }
 
     return _buildClassesList();
+  }
+
+  int _getTotalBookings() {
+    if (_adminClasses == null) return 0;
+    return _adminClasses!.fold(0, (sum, c) => sum + c.bookedCount);
   }
 
   Widget _buildErrorState() {
@@ -357,23 +596,49 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Nenhuma aula disponível para amanhã',
-              style: TextStyle(color: Colors.grey[600]),
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withOpacity(0.5),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.pool_outlined,
+                size: 48,
+                color: colorScheme.primary.withOpacity(0.7),
+              ),
             ),
             const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: () => _navigateToClasses(context),
-              icon: const Icon(Icons.pool),
-              label: const Text('Ver todas as aulas'),
+            Text(
+              'Nenhuma aula amanhã',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Explore o calendário para ver as próximas aulas disponíveis',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.6),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 32),
+            FilledButton.tonalIcon(
+              onPressed: () => _navigateToCalendar(context),
+              icon: const Icon(Icons.calendar_month),
+              label: const Text('Ver Calendário'),
             ),
           ],
         ),
@@ -426,13 +691,13 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildAdminBookingsList() {
+  Widget _buildAdminClassesList() {
     // Agrupa por data
-    final groupedByDate = <String, List<StudentBookingInfo>>{};
-    for (final booking in _adminBookings!) {
-      final dateKey = booking.formattedDate;
+    final groupedByDate = <String, List<ClassWithBookingsInfo>>{};
+    for (final classInfo in _adminClasses!) {
+      final dateKey = classInfo.formattedDate;
       groupedByDate.putIfAbsent(dateKey, () => []);
-      groupedByDate[dateKey]!.add(booking);
+      groupedByDate[dateKey]!.add(classInfo);
     }
 
     final dates = groupedByDate.keys.toList();
@@ -440,18 +705,20 @@ class _HomePageState extends State<HomePage> {
     return RefreshIndicator(
       onRefresh: _loadData,
       child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         itemCount: dates.length,
         itemBuilder: (context, index) {
           final date = dates[index];
-          final bookings = groupedByDate[date]!;
-          return _buildAdminDateSection(date, bookings);
+          final classes = groupedByDate[date]!;
+          return _buildAdminDateSection(date, classes);
         },
       ),
     );
   }
 
-  Widget _buildAdminDateSection(String date, List<StudentBookingInfo> bookings) {
+  Widget _buildAdminDateSection(String date, List<ClassWithBookingsInfo> classes) {
+    final totalBookings = classes.fold(0, (sum, c) => sum + c.bookedCount);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -479,7 +746,7 @@ class _HomePageState extends State<HomePage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${bookings.length} reserva${bookings.length > 1 ? 's' : ''}',
+                  '${classes.length} aula${classes.length > 1 ? 's' : ''} • $totalBookings reserva${totalBookings != 1 ? 's' : ''}',
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.primary,
@@ -490,132 +757,233 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
-        ...bookings.map(_buildAdminBookingCard),
+        ...classes.map(_buildAdminClassCard),
         const SizedBox(height: 8),
       ],
     );
   }
 
-  Widget _buildAdminBookingCard(StudentBookingInfo booking) {
-    final isClass = booking.classType == 'class';
+  Widget _buildAdminClassCard(ClassWithBookingsInfo classInfo) {
+    final isClass = classInfo.classType == 'class';
+    final colorScheme = Theme.of(context).colorScheme;
     
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            // Avatar do aluno
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: Text(
-                booking.studentName.isNotEmpty 
-                    ? booking.studentName[0].toUpperCase()
-                    : '?',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Informações
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: () => _navigateToClassDetail(classInfo),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Text(
-                    booking.studentName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                  // Ícone da aula
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: isClass
+                          ? colorScheme.primaryContainer
+                          : colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isClass ? Icons.school : Icons.pool,
+                      color: isClass
+                          ? colorScheme.primary
+                          : colorScheme.secondary,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(
-                        isClass ? Icons.school : Icons.pool,
-                        size: 14,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          '${booking.classTitle} • ${booking.formattedTime}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
+                  const SizedBox(width: 12),
+                  // Informações da aula
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          classInfo.classTitle,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                            const SizedBox(width: 4),
+                            Text(
+                              classInfo.formattedTime,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Ícone de seta indicando que é clicável
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.grey[400],
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            // Badge de reservas restantes
-            _buildRemainingBadge(booking),
-          ],
+              const SizedBox(height: 12),
+              // Badges de reservas e vagas
+              Row(
+                children: [
+                  _buildStatBadge(
+                    icon: Icons.people,
+                    label: '${classInfo.bookedCount} reserva${classInfo.bookedCount != 1 ? 's' : ''}',
+                    color: Colors.blue,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildStatBadge(
+                    icon: Icons.event_available,
+                    label: '${classInfo.availableSpots} restante${classInfo.availableSpots != 1 ? 's' : ''}',
+                    color: classInfo.availableSpots > 0 ? Colors.green : Colors.red,
+                  ),
+                  if (classInfo.checkedInCount > 0) ...[
+                    const SizedBox(width: 8),
+                    _buildStatBadge(
+                      icon: Icons.check_circle,
+                      label: '${classInfo.checkedInCount} presente${classInfo.checkedInCount != 1 ? 's' : ''}',
+                      color: Colors.teal,
+                    ),
+                  ],
+                ],
+              ),
+              // Preview dos alunos
+              if (classInfo.students.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    // Avatares empilhados dos primeiros 3 alunos
+                    SizedBox(
+                      width: 60,
+                      height: 28,
+                      child: Stack(
+                        children: [
+                          for (int i = 0; i < classInfo.students.length.clamp(0, 3); i++)
+                            Positioned(
+                              left: i * 16.0,
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: classInfo.students[i].checkedIn
+                                      ? Colors.green
+                                      : colorScheme.primaryContainer,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                child: Center(
+                                  child: classInfo.students[i].checkedIn
+                                      ? const Icon(Icons.check, color: Colors.white, size: 14)
+                                      : Text(
+                                          classInfo.students[i].studentName[0].toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: colorScheme.primary,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        classInfo.students.length > 3
+                            ? '${classInfo.students.take(3).map((s) => s.studentName.split(' ').first).join(', ')} e +${classInfo.students.length - 3}'
+                            : classInfo.students.map((s) => s.studentName.split(' ').first).join(', '),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      'Ver todos',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildRemainingBadge(StudentBookingInfo booking) {
-    Color bgColor;
-    Color textColor;
-    
-    if (booking.remainingBookings < 0) {
-      // Sem limite
-      bgColor = Colors.grey.shade100;
-      textColor = Colors.grey.shade600;
-    } else if (booking.remainingBookings == 0) {
-      // Limite atingido
-      bgColor = Colors.red.shade50;
-      textColor = Colors.red.shade700;
-    } else if (booking.remainingBookings == 1) {
-      // Quase no limite
-      bgColor = Colors.orange.shade50;
-      textColor = Colors.orange.shade700;
-    } else {
-      // Várias restantes
-      bgColor = Colors.green.shade50;
-      textColor = Colors.green.shade700;
-    }
-
+  Widget _buildStatBadge({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
           Text(
-            booking.remainingBookings < 0 
-                ? '∞' 
-                : '${booking.remainingBookings}',
+            label,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-          ),
-          Text(
-            'restante${booking.remainingBookings != 1 ? 's' : ''}',
-            style: TextStyle(
-              fontSize: 9,
-              color: textColor,
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _navigateToClassDetail(ClassWithBookingsInfo classInfo) async {
+    // Cria um SwimClass a partir do ClassWithBookingsInfo
+    final swimClass = SwimClass(
+      id: classInfo.classId,
+      title: classInfo.classTitle,
+      type: classInfo.classType == 'class' 
+          ? SwimClassType.classType 
+          : SwimClassType.free,
+      startTime: classInfo.classStartTime,
+      endTime: classInfo.classEndTime,
+      capacity: classInfo.capacity,
+      lanes: 1, // Valor padrão
+    );
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ClassDetailPage(
+          swimClass: swimClass,
+          bookedCount: classInfo.bookedCount,
+        ),
+      ),
+    );
+    _loadData();
   }
 
   Widget _buildClassesList() {
@@ -630,7 +998,7 @@ class _HomePageState extends State<HomePage> {
     return RefreshIndicator(
       onRefresh: _loadData,
       child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 100), // Espaço para FAB
         itemCount: groupedClasses.length,
         itemBuilder: (context, index) {
           final type = groupedClasses.keys.elementAt(index);
@@ -730,19 +1098,30 @@ class _HomePageState extends State<HomePage> {
   Widget _buildAvailabilityBadge(SwimClassWithAvailability classWithAvailability) {
     final isFull = classWithAvailability.isFull;
     final isBooked = classWithAvailability.isBookedByCurrentUser;
+    final bookedCount = classWithAvailability.bookedCount;
+    final availableSpots = classWithAvailability.availableSpots;
 
     Color bgColor;
     Color textColor;
+    String text;
 
     if (isBooked) {
       bgColor = Colors.green.shade50;
       textColor = Colors.green.shade700;
+      text = 'Reservado';
     } else if (isFull) {
       bgColor = Colors.red.shade50;
       textColor = Colors.red.shade700;
+      text = 'Lotada';
     } else {
       bgColor = Colors.blue.shade50;
       textColor = Colors.blue.shade700;
+      // Mostra reservas e restantes quando há reservas
+      if (bookedCount > 0) {
+        text = '$bookedCount reserva${bookedCount != 1 ? 's' : ''} • $availableSpots restante${availableSpots != 1 ? 's' : ''}';
+      } else {
+        text = classWithAvailability.availabilityText;
+      }
     }
 
     return Container(
@@ -752,7 +1131,7 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        isBooked ? 'Reservado' : classWithAvailability.availabilityText,
+        text,
         style: TextStyle(
           fontSize: 11,
           color: textColor,

@@ -25,7 +25,9 @@ class _DashboardPageState extends State<DashboardPage> {
   int _totalClasses = 0;
   int _totalBookings = 0;
   int _totalCheckIns = 0;
+  int _totalNoShows = 0;
   double _occupancyRate = 0.0;
+  double _attendanceRate = 0.0;
   List<DayOccupancy> _weeklyOccupancy = [];
   List<ClassTypeStats> _classTypeStats = [];
   List<Map<String, dynamic>> _popularClasses = [];
@@ -72,13 +74,37 @@ class _DashboardPageState extends State<DashboardPage> {
         };
       }).toList();
 
-      // Conta check-ins
+      // Conta check-ins e calcula no-shows (apenas para aulas passadas)
+      final now = DateTime.now();
       int checkIns = 0;
+      int pastBookings = 0;
+      int pastCheckIns = 0;
+      
       for (final booking in bookings) {
         if (booking['checked_in'] == true) {
           checkIns++;
         }
+        
+        // Verifica se a aula já passou para calcular no-shows
+        final classData = booking['classes'];
+        if (classData != null) {
+          final endTime = DateTime.parse(classData['end_time'] as String);
+          if (endTime.isBefore(now)) {
+            pastBookings++;
+            if (booking['checked_in'] == true) {
+              pastCheckIns++;
+            }
+          }
+        }
       }
+      
+      // No-shows = reservas de aulas passadas sem check-in
+      final noShows = pastBookings - pastCheckIns;
+      
+      // Taxa de presença = check-ins de aulas passadas / reservas de aulas passadas
+      final attendanceRate = pastBookings > 0 
+          ? (pastCheckIns / pastBookings) * 100 
+          : 100.0;
 
       // Calcula taxa de ocupação
       int totalCapacity = 0;
@@ -103,7 +129,9 @@ class _DashboardPageState extends State<DashboardPage> {
           _totalClasses = classes.length;
           _totalBookings = bookings.length;
           _totalCheckIns = checkIns;
+          _totalNoShows = noShows;
           _occupancyRate = occupancy;
+          _attendanceRate = attendanceRate;
           _weeklyOccupancy = weeklyOccupancy;
           _classTypeStats = classTypeStats;
           _popularClasses = popularClasses;
@@ -369,7 +397,29 @@ class _DashboardPageState extends State<DashboardPage> {
                 icon: Icons.check_circle,
                 label: 'Check-ins',
                 value: '$_totalCheckIns',
-                color: Colors.orange,
+                color: Colors.teal,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildStatCard(
+                icon: Icons.person_off,
+                label: 'No-shows',
+                value: '$_totalNoShows',
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildStatCard(
+                icon: Icons.trending_up,
+                label: 'Taxa de Presença',
+                value: '${_attendanceRate.toStringAsFixed(1)}%',
+                color: _attendanceRate >= 80 ? Colors.green : _attendanceRate >= 60 ? Colors.orange : Colors.red,
               ),
             ),
             const SizedBox(width: 16),

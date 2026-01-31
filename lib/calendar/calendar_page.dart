@@ -9,6 +9,7 @@ import '../services/booking_service.dart';
 import '../widgets/skeleton_loading.dart';
 
 /// Página de Calendário - visualização de aulas em formato calendário
+/// Design moderno com animações
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
 
@@ -16,7 +17,11 @@ class CalendarPage extends StatefulWidget {
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> {
+class _CalendarPageState extends State<CalendarPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
   final _bookingService = BookingService();
   final _adminService = AdminService();
 
@@ -34,8 +39,21 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
     _selectedDay = DateTime.now();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   DateTime _normalizeDate(DateTime date) {
@@ -72,6 +90,7 @@ class _CalendarPageState extends State<CalendarPage> {
           _isLoading = false;
           _updateSelectedDayClasses();
         });
+        _animationController.forward();
       }
     } catch (e) {
       if (mounted) {
@@ -264,13 +283,67 @@ class _CalendarPageState extends State<CalendarPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Calendário'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colorScheme.primary.withOpacity(0.08),
+              colorScheme.surface,
+            ],
+            stops: const [0.0, 0.2],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildCustomAppBar(context, colorScheme),
+              Expanded(
+                child: _isLoading
+                    ? const ClassesListSkeleton()
+                    : _error != null
+                        ? _buildErrorState()
+                        : FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: _buildCalendarView(),
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomAppBar(BuildContext context, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
           IconButton(
-            icon: const Icon(Icons.today),
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_ios_new),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              'Calendário',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          IconButton(
             onPressed: () {
               setState(() {
                 _focusedDay = DateTime.now();
@@ -278,20 +351,27 @@ class _CalendarPageState extends State<CalendarPage> {
                 _updateSelectedDayClasses();
               });
             },
-            tooltip: 'Hoje',
+            icon: const Icon(Icons.today_rounded),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
+          const SizedBox(width: 4),
           IconButton(
-            icon: const Icon(Icons.refresh),
             onPressed: _loadData,
-            tooltip: 'Atualizar',
+            icon: const Icon(Icons.refresh_rounded),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
         ],
       ),
-      body: _isLoading
-          ? const ClassesListSkeleton()
-          : _error != null
-              ? _buildErrorState()
-              : _buildCalendarView(),
     );
   }
 
@@ -480,19 +560,30 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget _buildAvailabilityBadge(SwimClassWithAvailability classWithAvailability) {
     final isFull = classWithAvailability.isFull;
     final isBooked = classWithAvailability.isBookedByCurrentUser;
+    final bookedCount = classWithAvailability.bookedCount;
+    final availableSpots = classWithAvailability.availableSpots;
 
     Color bgColor;
     Color textColor;
+    String text;
 
     if (isBooked) {
       bgColor = Colors.green.shade50;
       textColor = Colors.green.shade700;
+      text = 'Reservado';
     } else if (isFull) {
       bgColor = Colors.red.shade50;
       textColor = Colors.red.shade700;
+      text = 'Lotada';
     } else {
       bgColor = Colors.blue.shade50;
       textColor = Colors.blue.shade700;
+      // Mostra reservas e restantes quando há reservas
+      if (bookedCount > 0) {
+        text = '$bookedCount reserva${bookedCount != 1 ? 's' : ''} • $availableSpots restante${availableSpots != 1 ? 's' : ''}';
+      } else {
+        text = classWithAvailability.availabilityText;
+      }
     }
 
     return Container(
@@ -502,7 +593,7 @@ class _CalendarPageState extends State<CalendarPage> {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        isBooked ? 'Reservado' : classWithAvailability.availabilityText,
+        text,
         style: TextStyle(
           fontSize: 11,
           color: textColor,

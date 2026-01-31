@@ -45,6 +45,52 @@ void main() {
         expect(booking.id, equals('booking-123'));
         expect(booking.swimClass, isNull);
       });
+
+      test('should parse checked_in field', () {
+        final json = {
+          'id': 'booking-123',
+          'user_id': 'user-456',
+          'class_id': 'class-789',
+          'created_at': '2024-01-15T10:00:00Z',
+          'checked_in': true,
+        };
+
+        final booking = Booking.fromJson(json);
+
+        expect(booking.checkedIn, isTrue);
+      });
+
+      test('should handle null checked_in field', () {
+        final json = {
+          'id': 'booking-123',
+          'user_id': 'user-456',
+          'class_id': 'class-789',
+          'created_at': '2024-01-15T10:00:00Z',
+        };
+
+        final booking = Booking.fromJson(json);
+
+        expect(booking.checkedIn, isNull);
+      });
+    });
+
+    group('copyWith', () {
+      test('should create a copy with updated checkedIn', () {
+        final booking = Booking(
+          id: 'booking-123',
+          userId: 'user-456',
+          classId: 'class-789',
+          createdAt: DateTime.parse('2024-01-15T10:00:00Z'),
+          checkedIn: false,
+        );
+
+        final updatedBooking = booking.copyWith(checkedIn: true);
+
+        expect(updatedBooking.id, equals(booking.id));
+        expect(updatedBooking.userId, equals(booking.userId));
+        expect(updatedBooking.classId, equals(booking.classId));
+        expect(updatedBooking.checkedIn, isTrue);
+      });
     });
 
     group('toJson', () {
@@ -193,6 +239,48 @@ void main() {
         );
 
         expect(classWithAvailability.availabilityText, equals('5 vagas'));
+      });
+    });
+
+    group('detailedAvailabilityText', () {
+      test('should return full status when class is full', () {
+        final classWithAvailability = SwimClassWithAvailability(
+          swimClass: testClass,
+          availableSpots: 0,
+          bookedCount: 10,
+        );
+
+        expect(classWithAvailability.detailedAvailabilityText, equals('Lotada (10/10)'));
+      });
+
+      test('should return reservations and remaining for partial booking', () {
+        final classWithAvailability = SwimClassWithAvailability(
+          swimClass: testClass,
+          availableSpots: 4,
+          bookedCount: 6,
+        );
+
+        expect(classWithAvailability.detailedAvailabilityText, equals('6 reservas • 4 restantes'));
+      });
+
+      test('should use singular form for single reservation', () {
+        final classWithAvailability = SwimClassWithAvailability(
+          swimClass: testClass,
+          availableSpots: 9,
+          bookedCount: 1,
+        );
+
+        expect(classWithAvailability.detailedAvailabilityText, equals('1 reserva • 9 restantes'));
+      });
+
+      test('should use singular form for single remaining spot', () {
+        final classWithAvailability = SwimClassWithAvailability(
+          swimClass: testClass,
+          availableSpots: 1,
+          bookedCount: 9,
+        );
+
+        expect(classWithAvailability.detailedAvailabilityText, equals('9 reservas • 1 restante'));
       });
     });
   });

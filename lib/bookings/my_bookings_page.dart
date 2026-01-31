@@ -6,7 +6,7 @@ import '../models/swim_class.dart';
 import '../services/booking_service.dart';
 import '../widgets/skeleton_loading.dart';
 
-/// Tela de Minhas Reservas
+/// Tela de Minhas Reservas - Design moderno
 ///
 /// Exibe as reservas do usuário atual e permite cancelamento.
 class MyBookingsPage extends StatefulWidget {
@@ -16,7 +16,11 @@ class MyBookingsPage extends StatefulWidget {
   State<MyBookingsPage> createState() => _MyBookingsPageState();
 }
 
-class _MyBookingsPageState extends State<MyBookingsPage> {
+class _MyBookingsPageState extends State<MyBookingsPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  
   final _bookingService = BookingService();
 
   List<Booking>? _bookings;
@@ -27,7 +31,20 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
     _loadBookings();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadBookings() async {
@@ -44,6 +61,7 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
           _bookings = bookings;
           _isLoading = false;
         });
+        _animationController.forward();
       }
     } catch (e) {
       if (mounted) {
@@ -201,19 +219,69 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Minhas Reservas'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colorScheme.primary.withOpacity(0.1),
+              colorScheme.surface,
+            ],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildCustomAppBar(context, colorScheme),
+              Expanded(child: _buildBody()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomAppBar(BuildContext context, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_ios_new),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              'Minhas Reservas',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          IconButton(
             onPressed: _loadBookings,
-            tooltip: 'Atualizar',
+            icon: const Icon(Icons.refresh_rounded),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
         ],
       ),
-      body: _buildBody(),
     );
   }
 
@@ -234,7 +302,10 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
       return _buildEmptyState();
     }
 
-    return _buildBookingsList();
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: _buildBookingsList(),
+    );
   }
 
   Widget _buildErrorState() {

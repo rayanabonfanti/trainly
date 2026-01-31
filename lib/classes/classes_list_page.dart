@@ -10,7 +10,7 @@ import '../services/classes_service.dart';
 import '../widgets/skeleton_loading.dart';
 import 'class_form_page.dart';
 
-/// Tela de listagem de aulas
+/// Tela de listagem de aulas - Design moderno
 ///
 /// - Admins: veem quem reservou cada aula + gerenciam aulas
 /// - Alunos: podem visualizar e reservar aulas disponíveis
@@ -21,7 +21,11 @@ class ClassesListPage extends StatefulWidget {
   State<ClassesListPage> createState() => _ClassesListPageState();
 }
 
-class _ClassesListPageState extends State<ClassesListPage> {
+class _ClassesListPageState extends State<ClassesListPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
   final _classesService = ClassesService();
   final _adminService = AdminService();
   final _bookingService = BookingService();
@@ -36,7 +40,20 @@ class _ClassesListPageState extends State<ClassesListPage> {
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -68,6 +85,7 @@ class _ClassesListPageState extends State<ClassesListPage> {
           _bookingsByClass = bookingsByClass;
           _isLoading = false;
         });
+        _animationController.forward();
       }
     } catch (e) {
       if (mounted) {
@@ -182,19 +200,30 @@ class _ClassesListPageState extends State<ClassesListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isAdmin ? 'Gerenciar Aulas' : 'Aulas Disponíveis'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-            tooltip: 'Atualizar',
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colorScheme.primary.withOpacity(0.08),
+              colorScheme.surface,
+            ],
+            stops: const [0.0, 0.2],
           ),
-        ],
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildCustomAppBar(context, colorScheme),
+              Expanded(child: _buildBody()),
+            ],
+          ),
+        ),
       ),
-      body: _buildBody(),
       floatingActionButton: _isAdmin
           ? FloatingActionButton.extended(
               onPressed: () => _navigateToForm(),
@@ -202,6 +231,45 @@ class _ClassesListPageState extends State<ClassesListPage> {
               label: const Text('Nova Aula'),
             )
           : null,
+    );
+  }
+
+  Widget _buildCustomAppBar(BuildContext context, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_ios_new),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              _isAdmin ? 'Gerenciar Aulas' : 'Aulas Disponíveis',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          IconButton(
+            onPressed: _loadData,
+            icon: const Icon(Icons.refresh_rounded),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -218,7 +286,10 @@ class _ClassesListPageState extends State<ClassesListPage> {
       return _buildEmptyState();
     }
 
-    return _buildClassesList();
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: _buildClassesList(),
+    );
   }
 
   Widget _buildErrorState() {
@@ -561,6 +632,8 @@ class _ClassesListPageState extends State<ClassesListPage> {
   Widget _buildAvailabilityChip(SwimClassWithAvailability classWithAvailability) {
     final isFull = classWithAvailability.isFull;
     final isBooked = classWithAvailability.isBookedByCurrentUser;
+    final bookedCount = classWithAvailability.bookedCount;
+    final availableSpots = classWithAvailability.availableSpots;
 
     Color bgColor;
     Color textColor;
@@ -568,23 +641,22 @@ class _ClassesListPageState extends State<ClassesListPage> {
     String text;
 
     if (_isAdmin) {
-      // Para admin, mostra vagas ocupadas / total
-      final total = classWithAvailability.swimClass.capacity;
-      final booked = classWithAvailability.bookedCount;
-      text = '$booked / $total';
-      
+      // Para admin, mostra reservas e restantes
       if (isFull) {
         bgColor = Colors.red.shade50;
         textColor = Colors.red.shade700;
         icon = Icons.block;
-      } else if (booked > 0) {
+        text = 'Lotada ($bookedCount/${classWithAvailability.swimClass.capacity})';
+      } else if (bookedCount > 0) {
         bgColor = Colors.orange.shade50;
         textColor = Colors.orange.shade700;
         icon = Icons.people;
+        text = '$bookedCount reserva${bookedCount != 1 ? 's' : ''} • $availableSpots restante${availableSpots != 1 ? 's' : ''}';
       } else {
         bgColor = Colors.green.shade50;
         textColor = Colors.green.shade700;
         icon = Icons.event_available;
+        text = '$availableSpots vagas disponíveis';
       }
     } else {
       // Para aluno
@@ -602,7 +674,12 @@ class _ClassesListPageState extends State<ClassesListPage> {
         bgColor = Colors.blue.shade50;
         textColor = Colors.blue.shade700;
         icon = Icons.people;
-        text = classWithAvailability.availabilityText;
+        // Mostra reservas e restantes quando há reservas
+        if (bookedCount > 0) {
+          text = '$bookedCount reserva${bookedCount != 1 ? 's' : ''} • $availableSpots restante${availableSpots != 1 ? 's' : ''}';
+        } else {
+          text = classWithAvailability.availabilityText;
+        }
       }
     }
 
@@ -617,12 +694,15 @@ class _ClassesListPageState extends State<ClassesListPage> {
         children: [
           Icon(icon, size: 14, color: textColor),
           const SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              color: textColor,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                color: textColor,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
