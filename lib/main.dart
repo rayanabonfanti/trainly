@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -11,21 +14,109 @@ import 'core/theme_provider.dart';
 /// Provider global para tema
 final themeProvider = ThemeProvider();
 
+/// Armazena erro de inicialização para mostrar na tela
+String? _initError;
+
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Captura erros não tratados e mostra na tela
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Carrega variáveis de ambiente do arquivo .env
-  await dotenv.load(fileName: '.env');
+    // Captura erros do Flutter framework
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      _initError = 'Flutter Error: ${details.exception}\n\n${details.stack}';
+    };
 
-  await Supabase.initialize(
-    url: SupabaseConfig.supabaseUrl,
-    anonKey: SupabaseConfig.supabaseAnonKey,
-  );
+    // Carrega .env apenas em debug (em release, usa --dart-define)
+    if (kDebugMode) {
+      try {
+        await dotenv.load(fileName: '.env');
+      } catch (e) {
+        debugPrint('Aviso: .env não encontrado: $e');
+      }
+    }
 
-  // Inicializa as regras de negócio dinâmicas
-  await BookingRules.initialize();
+    try {
+      await Supabase.initialize(
+        url: SupabaseConfig.supabaseUrl,
+        anonKey: SupabaseConfig.supabaseAnonKey,
+      );
 
-  runApp(const TrainlyApp());
+      // Inicializa as regras de negócio dinâmicas
+      try {
+        await BookingRules.initialize();
+      } catch (e) {
+        debugPrint('Aviso: Não foi possível carregar configurações: $e');
+      }
+    } catch (e, stack) {
+      _initError = 'Erro Supabase: $e\n\nStack: $stack';
+      debugPrint('Erro ao inicializar Supabase: $e');
+    }
+
+    runApp(const TrainlyApp());
+  }, (error, stack) {
+    // Erro não capturado - mostra app com erro
+    _initError = 'Erro Fatal: $error\n\nStack: $stack';
+    runApp(ErrorApp(error: _initError!));
+  });
+}
+
+/// App de erro para quando há falha crítica
+class ErrorApp extends StatelessWidget {
+  final String error;
+  
+  const ErrorApp({super.key, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        backgroundColor: Colors.red.shade50,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                const Text(
+                  'Erro ao iniciar o app',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: SelectableText(
+                        error,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Tire um screenshot e envie para o desenvolvedor',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class TrainlyApp extends StatefulWidget {

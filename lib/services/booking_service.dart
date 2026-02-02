@@ -4,6 +4,7 @@ import '../core/security_helpers.dart';
 import '../core/supabase_client.dart';
 import '../models/booking.dart';
 import '../models/swim_class.dart';
+import 'membership_service.dart';
 
 /// Resultado de uma operação de booking
 class BookingResult {
@@ -138,21 +139,32 @@ class ClassWithBookingsInfo {
 
 /// Serviço para gerenciamento de reservas
 class BookingService {
+  final MembershipService _membershipService = MembershipService();
+
   /// Busca aulas disponíveis para agendamento (a partir de amanhã)
+  /// Se businessId for fornecido, filtra por empresa
   /// Retorna aulas com informação de vagas e se o usuário já reservou
-  Future<List<SwimClassWithAvailability>> fetchAvailableClasses() async {
+  Future<List<SwimClassWithAvailability>> fetchAvailableClasses({
+    String? businessId,
+  }) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return [];
 
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     final startOfTomorrow = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
 
-    // Busca aulas
-    final classesResponse = await supabase
+    // Busca aulas (filtrando por business se fornecido)
+    final baseQuery = supabase
         .from('classes')
         .select()
-        .gte('start_time', startOfTomorrow.toIso8601String())
-        .order('start_time', ascending: true);
+        .gte('start_time', startOfTomorrow.toIso8601String());
+
+    final classesResponse = businessId != null
+        ? await baseQuery
+            .eq('business_id', businessId)
+            .order('start_time', ascending: true)
+        : await baseQuery
+            .order('start_time', ascending: true);
 
     // Busca todas as reservas para calcular vagas (ignora erro se tabela não existe)
     var bookingCounts = <String, int>{};
@@ -266,6 +278,7 @@ class BookingService {
   }
 
   /// Cria uma reserva para uma aula
+  /// Verifica se o usuário é membro aprovado da academia antes de permitir reserva
   Future<BookingResult> createBooking(String classId) async {
     // Validação de input
     final idError = InputValidator.validateId(classId, 'ID da aula');
@@ -279,6 +292,30 @@ class BookingService {
     }
 
     try {
+      // Busca informações da aula para verificar a empresa
+      final classResponse = await supabase
+          .from('classes')
+          .select('business_id')
+          .eq('id', classId)
+          .maybeSingle();
+
+      if (classResponse == null) {
+        return BookingResult.error('Aula não encontrada');
+      }
+
+      final businessId = classResponse['business_id'] as String?;
+
+      // Se a aula pertence a uma empresa, verifica membership
+      if (businessId != null) {
+        final hasMembership = await _membershipService.hasApprovedMembership(businessId);
+        if (!hasMembership) {
+          return BookingResult.error(
+            'Você precisa ser membro aprovado desta academia para reservar aulas. '
+            'Solicite acesso na página da academia.',
+          );
+        }
+      }
+
       // Verifica limite de reservas da semana (se habilitado)
       if (BookingRules.bookingLimitEnabled) {
         final limits = await getUserBookingLimits();

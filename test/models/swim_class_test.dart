@@ -9,8 +9,8 @@ void main() {
     });
 
     test('should have correct labels', () {
-      expect(SwimClassType.classType.label, equals('Aula de Natação'));
-      expect(SwimClassType.free.label, equals('Nado Livre'));
+      expect(SwimClassType.classType.label, equals('Aula'));
+      expect(SwimClassType.free.label, equals('Treino Livre'));
     });
 
     group('fromString', () {
@@ -36,7 +36,7 @@ void main() {
       test('should create SwimClass from complete JSON', () {
         final json = {
           'id': '123e4567-e89b-12d3-a456-426614174000',
-          'title': 'Natação Iniciante',
+          'title': 'Treino Funcional',
           'description': 'Aula para iniciantes',
           'start_time': '2024-01-15T08:00:00Z',
           'end_time': '2024-01-15T09:00:00Z',
@@ -49,7 +49,7 @@ void main() {
         final swimClass = SwimClass.fromJson(json);
 
         expect(swimClass.id, equals('123e4567-e89b-12d3-a456-426614174000'));
-        expect(swimClass.title, equals('Natação Iniciante'));
+        expect(swimClass.title, equals('Treino Funcional'));
         expect(swimClass.description, equals('Aula para iniciantes'));
         expect(swimClass.capacity, equals(10));
         expect(swimClass.lanes, equals(4));
@@ -59,7 +59,7 @@ void main() {
       test('should handle null description', () {
         final json = {
           'id': '123',
-          'title': 'Natação',
+          'title': 'Treino',
           'description': null,
           'start_time': '2024-01-15T08:00:00Z',
           'end_time': '2024-01-15T09:00:00Z',
@@ -79,7 +79,7 @@ void main() {
       test('should convert SwimClass to JSON correctly', () {
         final swimClass = SwimClass(
           id: '123',
-          title: 'Natação Iniciante',
+          title: 'Treino Funcional',
           description: 'Aula para iniciantes',
           startTime: DateTime.parse('2024-01-15T08:00:00Z'),
           endTime: DateTime.parse('2024-01-15T09:00:00Z'),
@@ -90,7 +90,7 @@ void main() {
 
         final json = swimClass.toJson();
 
-        expect(json['title'], equals('Natação Iniciante'));
+        expect(json['title'], equals('Treino Funcional'));
         expect(json['description'], equals('Aula para iniciantes'));
         expect(json['capacity'], equals(10));
         expect(json['lanes'], equals(4));

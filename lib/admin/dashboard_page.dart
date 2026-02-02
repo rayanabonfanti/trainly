@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../core/supabase_client.dart';
+import '../core/theme_provider.dart';
 import '../services/booking_service.dart';
 import '../services/classes_service.dart';
 import '../widgets/skeleton_loading.dart';
@@ -226,13 +227,13 @@ class _DashboardPageState extends State<DashboardPage> {
         type: 'Aulas',
         count: classCount,
         bookings: classBookings,
-        color: Colors.blue,
+        color: AppColors.cyanPrimary,
       ),
       ClassTypeStats(
         type: 'Nado Livre',
         count: freeCount,
         bookings: freeBookings,
-        color: Colors.teal,
+        color: AppColors.tealAccent,
       ),
     ];
   }
@@ -375,7 +376,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 icon: Icons.pool,
                 label: 'Total de Aulas',
                 value: '$_totalClasses',
-                color: Colors.blue,
+                color: AppColors.cyanPrimary,
               ),
             ),
             const SizedBox(width: 16),
@@ -397,7 +398,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 icon: Icons.check_circle,
                 label: 'Check-ins',
                 value: '$_totalCheckIns',
-                color: Colors.teal,
+                color: AppColors.tealAccent,
               ),
             ),
             const SizedBox(width: 16),
@@ -428,7 +429,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 icon: Icons.pie_chart,
                 label: 'Ocupação',
                 value: '${_occupancyRate.toStringAsFixed(1)}%',
-                color: Colors.purple,
+                color: AppColors.cyanPrimary,
               ),
             ),
           ],
@@ -770,7 +771,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     decoration: BoxDecoration(
                       color: (c['occupancy'] as double) > 80
                           ? Colors.green.shade100
-                          : Colors.blue.shade100,
+                          : AppColors.cyanLight.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -780,7 +781,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         fontWeight: FontWeight.w600,
                         color: (c['occupancy'] as double) > 80
                             ? Colors.green.shade700
-                            : Colors.blue.shade700,
+                            : AppColors.cyanDark,
                       ),
                     ),
                   ),

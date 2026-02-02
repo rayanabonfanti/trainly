@@ -5,26 +5,47 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 final supabase = Supabase.instance.client;
 
 /// Configurações do Supabase carregadas de variáveis de ambiente
+/// Com fallback para valores compilados via --dart-define
 class SupabaseConfig {
-  /// URL do projeto Supabase (carregado de .env)
+  // Valores passados via --dart-define (fallback para build de release)
+  static const String _compiledUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: '',
+  );
+  static const String _compiledKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: '',
+  );
+
+  /// URL do projeto Supabase
   static String get supabaseUrl {
+    // Primeiro tenta do .env (funciona em debug)
     final url = dotenv.env['SUPABASE_URL'];
-    if (url == null || url.isEmpty) {
-      throw Exception(
-        'SUPABASE_URL não configurada. Verifique o arquivo .env',
-      );
+    if (url != null && url.isNotEmpty) {
+      return url;
     }
-    return url;
+    // Fallback para valor compilado
+    if (_compiledUrl.isNotEmpty) {
+      return _compiledUrl;
+    }
+    throw Exception(
+      'SUPABASE_URL não configurada. Verifique o arquivo .env',
+    );
   }
 
-  /// Chave anônima do Supabase (carregada de .env)
+  /// Chave anônima do Supabase
   static String get supabaseAnonKey {
+    // Primeiro tenta do .env (funciona em debug)
     final key = dotenv.env['SUPABASE_ANON_KEY'];
-    if (key == null || key.isEmpty) {
-      throw Exception(
-        'SUPABASE_ANON_KEY não configurada. Verifique o arquivo .env',
-      );
+    if (key != null && key.isNotEmpty) {
+      return key;
     }
-    return key;
+    // Fallback para valor compilado
+    if (_compiledKey.isNotEmpty) {
+      return _compiledKey;
+    }
+    throw Exception(
+      'SUPABASE_ANON_KEY não configurada. Verifique o arquivo .env',
+    );
   }
 }

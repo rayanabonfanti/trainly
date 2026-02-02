@@ -197,7 +197,7 @@ class _CheckInPageState extends State<CheckInPage> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              isClass ? Icons.school : Icons.pool,
+              isClass ? Icons.school : Icons.fitness_center,
               color: isClass
                   ? Theme.of(context).colorScheme.primary
                   : Theme.of(context).colorScheme.secondary,

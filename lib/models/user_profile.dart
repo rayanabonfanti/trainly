@@ -1,3 +1,24 @@
+/// Papel do usuário no sistema
+enum UserRole {
+  student('student', 'Aluno'),
+  admin('admin', 'Administrador');
+
+  final String value;
+  final String label;
+
+  const UserRole(this.value, this.label);
+
+  static UserRole fromString(String value) {
+    return UserRole.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => UserRole.student,
+    );
+  }
+
+  bool get isAdmin => this == UserRole.admin;
+  bool get isStudent => this == UserRole.student;
+}
+
 /// Model para o perfil do usuário
 class UserProfile {
   final String id;
@@ -5,6 +26,8 @@ class UserProfile {
   final String? name;
   final String? phone;
   final String? avatarUrl;
+  final UserRole role;
+  final String? businessId; // ID da empresa que o admin gerencia
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -14,6 +37,8 @@ class UserProfile {
     this.name,
     this.phone,
     this.avatarUrl,
+    this.role = UserRole.student,
+    this.businessId,
     this.createdAt,
     this.updatedAt,
   });
@@ -25,6 +50,8 @@ class UserProfile {
       name: json['name'] as String?,
       phone: json['phone'] as String?,
       avatarUrl: json['avatar_url'] as String?,
+      role: UserRole.fromString(json['role'] as String? ?? 'student'),
+      businessId: json['business_id'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -39,8 +66,14 @@ class UserProfile {
       'name': name,
       'phone': phone,
       'avatar_url': avatarUrl,
+      'role': role.value,
+      'business_id': businessId,
     };
   }
+
+  bool get isAdmin => role.isAdmin;
+  bool get isStudent => role.isStudent;
+  bool get hasBusinessId => businessId != null && businessId!.isNotEmpty;
 
   UserProfile copyWith({
     String? id,
@@ -48,6 +81,8 @@ class UserProfile {
     String? name,
     String? phone,
     String? avatarUrl,
+    UserRole? role,
+    String? businessId,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -57,6 +92,8 @@ class UserProfile {
       name: name ?? this.name,
       phone: phone ?? this.phone,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
+      businessId: businessId ?? this.businessId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

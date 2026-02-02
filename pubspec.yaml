@@ -86,7 +86,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Assets - includes environment configuration
+  # Assets configuration
+  # NOTE: .env is included for development. For production, use --dart-define
   assets:
     - .env
 

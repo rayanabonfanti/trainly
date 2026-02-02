@@ -2,6 +2,7 @@ import '../core/input_validator.dart';
 import '../core/security_helpers.dart';
 import '../core/supabase_client.dart';
 import '../models/swim_class.dart';
+import 'business_service.dart';
 
 /// Resultado de uma operação no serviço de aulas
 class ClassOperationResult {
@@ -33,29 +34,51 @@ class ClassOperationResult {
 
 /// Serviço para gerenciamento de aulas (CRUD)
 class ClassesService {
+  final BusinessService _businessService = BusinessService();
+
   /// Busca todas as aulas ordenadas por start_time
-  Future<List<SwimClass>> fetchClasses() async {
-    final response = await supabase
-        .from('classes')
-        .select()
-        .order('start_time', ascending: true);
+  /// Se businessId for fornecido, filtra por empresa
+  Future<List<SwimClass>> fetchClasses({String? businessId}) async {
+    final baseQuery = supabase.from('classes').select();
+    
+    final response = businessId != null
+        ? await baseQuery
+            .eq('business_id', businessId)
+            .order('start_time', ascending: true)
+        : await baseQuery
+            .order('start_time', ascending: true);
 
     return (response as List)
         .map((json) => SwimClass.fromJson(json))
         .toList();
   }
 
+  /// Busca aulas de uma empresa específica
+  Future<List<SwimClass>> fetchClassesByBusiness(String businessId) async {
+    return fetchClasses(businessId: businessId);
+  }
+
   /// Busca aulas de uma data específica
-  Future<List<SwimClass>> fetchClassesByDate(DateTime date) async {
+  /// Se businessId for fornecido, filtra por empresa
+  Future<List<SwimClass>> fetchClassesByDate(
+    DateTime date, {
+    String? businessId,
+  }) async {
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
-    final response = await supabase
+    final baseQuery = supabase
         .from('classes')
         .select()
         .gte('start_time', startOfDay.toIso8601String())
-        .lt('start_time', endOfDay.toIso8601String())
-        .order('start_time', ascending: true);
+        .lt('start_time', endOfDay.toIso8601String());
+
+    final response = businessId != null
+        ? await baseQuery
+            .eq('business_id', businessId)
+            .order('start_time', ascending: true)
+        : await baseQuery
+            .order('start_time', ascending: true);
 
     return (response as List)
         .map((json) => SwimClass.fromJson(json))
@@ -65,6 +88,7 @@ class ClassesService {
   /// Cria uma nova aula
   /// Retorna [ClassOperationResult] indicando sucesso ou falha
   /// REQUER: Usuário autenticado como admin
+  /// A aula é automaticamente vinculada à empresa do admin
   Future<ClassOperationResult> createClass(SwimClass swimClass) async {
     // SEGURANÇA: Verifica se é admin
     final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
@@ -79,9 +103,20 @@ class ClassesService {
         return ClassOperationResult.error(validationError);
       }
 
+      // Busca a empresa do admin
+      final business = await _businessService.getMyBusiness();
+      if (business == null) {
+        return ClassOperationResult.error(
+          'Você precisa ter uma empresa cadastrada para criar aulas',
+        );
+      }
+
+      // Adiciona o business_id à aula
+      final classWithBusiness = swimClass.copyWith(businessId: business.id);
+
       final response = await supabase
           .from('classes')
-          .insert(swimClass.toJson())
+          .insert(classWithBusiness.toJson())
           .select()
           .single();
 
@@ -95,9 +130,27 @@ class ClassesService {
     }
   }
 
+  /// Busca aulas da empresa do admin atual
+  /// REQUER: Usuário autenticado como admin
+  Future<List<SwimClass>> fetchMyBusinessClasses() async {
+    final business = await _businessService.getMyBusiness();
+    if (business == null) return [];
+
+    return fetchClasses(businessId: business.id);
+  }
+
+  /// Busca aulas de uma data específica da empresa do admin atual
+  /// REQUER: Usuário autenticado como admin
+  Future<List<SwimClass>> fetchMyBusinessClassesByDate(DateTime date) async {
+    final business = await _businessService.getMyBusiness();
+    if (business == null) return [];
+
+    return fetchClassesByDate(date, businessId: business.id);
+  }
+
   /// Atualiza uma aula existente
   /// Retorna [ClassOperationResult] indicando sucesso ou falha
-  /// REQUER: Usuário autenticado como admin
+  /// REQUER: Usuário autenticado como admin da empresa dona da aula
   Future<ClassOperationResult> updateClass(SwimClass swimClass) async {
     // SEGURANÇA: Verifica se é admin
     final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
@@ -116,6 +169,31 @@ class ClassesService {
       final validationError = _validateClass(swimClass);
       if (validationError != null) {
         return ClassOperationResult.error(validationError);
+      }
+
+      // Verifica se a aula pertence à empresa do admin
+      final business = await _businessService.getMyBusiness();
+      if (business == null) {
+        return ClassOperationResult.error(
+          'Você precisa ter uma empresa cadastrada para editar aulas',
+        );
+      }
+
+      // Busca a aula para verificar ownership
+      final existingClass = await supabase
+          .from('classes')
+          .select('business_id')
+          .eq('id', swimClass.id)
+          .maybeSingle();
+
+      if (existingClass == null) {
+        return ClassOperationResult.error('Aula não encontrada');
+      }
+
+      if (existingClass['business_id'] != business.id) {
+        return ClassOperationResult.error(
+          'Você só pode editar aulas da sua empresa',
+        );
       }
 
       final response = await supabase
@@ -137,7 +215,7 @@ class ClassesService {
 
   /// Exclui uma aula
   /// Retorna [ClassOperationResult] indicando sucesso ou falha
-  /// REQUER: Usuário autenticado como admin
+  /// REQUER: Usuário autenticado como admin da empresa dona da aula
   Future<ClassOperationResult> deleteClass(String classId) async {
     // SEGURANÇA: Verifica se é admin
     final isAdmin = await SecurityHelpers.isCurrentUserAdmin();
@@ -152,6 +230,31 @@ class ClassesService {
     }
 
     try {
+      // Verifica se a aula pertence à empresa do admin
+      final business = await _businessService.getMyBusiness();
+      if (business == null) {
+        return ClassOperationResult.error(
+          'Você precisa ter uma empresa cadastrada para excluir aulas',
+        );
+      }
+
+      // Busca a aula para verificar ownership
+      final existingClass = await supabase
+          .from('classes')
+          .select('business_id')
+          .eq('id', classId)
+          .maybeSingle();
+
+      if (existingClass == null) {
+        return ClassOperationResult.error('Aula não encontrada');
+      }
+
+      if (existingClass['business_id'] != business.id) {
+        return ClassOperationResult.error(
+          'Você só pode excluir aulas da sua empresa',
+        );
+      }
+
       await supabase.from('classes').delete().eq('id', classId);
 
       return ClassOperationResult.success('Aula excluída com sucesso!');
@@ -182,11 +285,11 @@ class ClassesService {
     }
 
     if (swimClass.lanes <= 0) {
-      return 'O número de raias deve ser maior que zero';
+      return 'O número de vagas deve ser maior que zero';
     }
 
     if (swimClass.lanes > 50) {
-      return 'Número máximo de raias excedido';
+      return 'Número máximo de vagas excedido';
     }
 
     return null;

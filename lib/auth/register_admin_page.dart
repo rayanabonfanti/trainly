@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/supabase_client.dart';
+import 'register_student_page.dart' show pendingRegistrationRoleKey;
 
 /// Página de registro para empresas/administradores
 class RegisterAdminPage extends StatefulWidget {
@@ -31,6 +33,14 @@ class _RegisterAdminPageState extends State<RegisterAdminPage>
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
     _animationController.forward();
+    
+    // Limpa qualquer valor antigo de cadastro pendente
+    _clearPendingRole();
+  }
+
+  Future<void> _clearPendingRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(pendingRegistrationRoleKey);
   }
 
   @override
@@ -46,6 +56,10 @@ class _RegisterAdminPageState extends State<RegisterAdminPage>
     });
 
     try {
+      // Salva o tipo de cadastro antes de iniciar o OAuth
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(pendingRegistrationRoleKey, 'admin');
+      
       if (kIsWeb) {
         await supabase.auth.signInWithOAuth(
           OAuthProvider.google,
@@ -110,8 +124,6 @@ class _RegisterAdminPageState extends State<RegisterAdminPage>
                           const SizedBox(height: 24),
                         ],
                         _buildRegisterButton(colorScheme),
-                        const SizedBox(height: 16),
-                        _buildContactInfo(context, colorScheme),
                         const SizedBox(height: 24),
                         _buildTerms(context, colorScheme),
                       ],
@@ -201,7 +213,7 @@ class _RegisterAdminPageState extends State<RegisterAdminPage>
         ),
         const SizedBox(height: 12),
         Text(
-          'Gerencie sua academia de natação\ncom nossa plataforma completa',
+          'Gerencie seu espaço de treinos\ncom nossa plataforma completa',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurface.withOpacity(0.7),
@@ -382,36 +394,6 @@ class _RegisterAdminPageState extends State<RegisterAdminPage>
             fontWeight: FontWeight.w600,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildContactInfo(BuildContext context, ColorScheme colorScheme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.tertiaryContainer.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.info_outline,
-            color: colorScheme.tertiary,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Após o cadastro, nossa equipe entrará em contato para configurar sua conta de administrador.',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurface.withOpacity(0.7),
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

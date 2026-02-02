@@ -33,15 +33,15 @@ void main() {
       test('should have class type in defaults', () {
         final classType = ClassType.defaults.firstWhere((t) => t.id == 'class');
 
-        expect(classType.name, equals('Aula de Natação'));
+        expect(classType.name, equals('Aula'));
         expect(classType.icon, equals('school'));
       });
 
       test('should have free type in defaults', () {
         final freeType = ClassType.defaults.firstWhere((t) => t.id == 'free');
 
-        expect(freeType.name, equals('Nado Livre'));
-        expect(freeType.icon, equals('pool'));
+        expect(freeType.name, equals('Treino Livre'));
+        expect(freeType.icon, equals('fitness_center'));
       });
     });
 

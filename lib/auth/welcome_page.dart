@@ -117,7 +117,7 @@ class _WelcomePageState extends State<WelcomePage>
         ],
       ),
       child: Icon(
-        Icons.pool,
+        Icons.fitness_center,
         size: 64,
         color: colorScheme.primary,
       ),
@@ -137,7 +137,7 @@ class _WelcomePageState extends State<WelcomePage>
 
   Widget _buildSubtitle(ThemeData theme) {
     return Text(
-      'Gerencie suas aulas de natação\nde forma simples e eficiente',
+      'Gerencie suas aulas e treinos\nde forma simples e eficiente',
       textAlign: TextAlign.center,
       style: theme.textTheme.bodyLarge?.copyWith(
         color: Colors.white.withOpacity(0.9),

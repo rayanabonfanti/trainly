@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../auth/setup_business_page.dart';
+import '../core/theme_provider.dart';
 import '../classes/classes_list_page.dart';
+import '../models/business.dart';
 import '../services/admin_service.dart';
+import '../services/business_service.dart';
 import '../services/classes_service.dart';
+import '../services/membership_service.dart';
 import 'dashboard_page.dart';
 import 'manage_admins_page.dart';
-import 'settings_page.dart';
+import 'manage_members_page.dart';
 
 /// Painel de Administração - Hub Central
 ///
@@ -21,11 +26,16 @@ class AdminPanelPage extends StatefulWidget {
 class _AdminPanelPageState extends State<AdminPanelPage> {
   final _adminService = AdminService();
   final _classesService = ClassesService();
+  final _businessService = BusinessService();
+  final _membershipService = MembershipService();
 
   bool _isCheckingAccess = true;
   bool _hasAccess = false;
+  bool _hasBusinessConfigured = false;
+  Business? _business;
   int _totalClasses = 0;
   int _totalAdmins = 0;
+  int _pendingMembers = 0;
   bool _isLoadingStats = true;
 
   @override
@@ -44,8 +54,32 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       });
 
       if (isAdmin) {
+        await _checkBusiness();
         _loadStats();
       }
+    }
+  }
+
+  Future<void> _checkBusiness() async {
+    final business = await _businessService.getMyBusiness();
+    if (mounted) {
+      setState(() {
+        _business = business;
+        _hasBusinessConfigured = business != null;
+      });
+    }
+  }
+
+  Future<void> _setupBusiness() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => const SetupBusinessPage(),
+      ),
+    );
+
+    if (result == true) {
+      _checkBusiness();
+      _loadStats();
     }
   }
 
@@ -56,14 +90,16 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
 
     try {
       final results = await Future.wait([
-        _classesService.fetchClasses(),
+        _classesService.fetchMyBusinessClasses(),
         _adminService.listAdmins(),
+        _membershipService.countPendingRequests(),
       ]);
 
       if (mounted) {
         setState(() {
           _totalClasses = (results[0] as List).length;
           _totalAdmins = (results[1] as List).length;
+          _pendingMembers = results[2] as int;
           _isLoadingStats = false;
         });
       }
@@ -112,6 +148,10 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       return _buildAccessDenied();
     }
 
+    if (!_hasBusinessConfigured) {
+      return _buildSetupBusinessPrompt();
+    }
+
     return RefreshIndicator(
       onRefresh: _loadStats,
       child: SingleChildScrollView(
@@ -127,6 +167,53 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
             _buildSectionTitle('Gerenciamento'),
             const SizedBox(height: 16),
             _buildManagementCards(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSetupBusinessPrompt() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.business,
+                size: 60,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'Configure sua Academia',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Antes de começar, você precisa configurar\nos dados da sua academia.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: _setupBusiness,
+              icon: const Icon(Icons.add_business),
+              label: const Text('Configurar Academia'),
+            ),
           ],
         ),
       ),
@@ -213,11 +300,26 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.admin_panel_settings,
-                  color: Colors.white,
-                  size: 32,
-                ),
+                child: _business?.logoUrl != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          _business!.logoUrl!,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.business,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        ),
+                      )
+                    : const Icon(
+                        Icons.business,
+                        color: Colors.white,
+                        size: 32,
+                      ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -225,7 +327,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Bem-vindo, Admin!',
+                      _business?.name ?? 'Sua Academia',
                       style:
                           Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 color: Colors.white,
@@ -234,7 +336,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Gerencie aulas e administradores',
+                      'Gerencie aulas, membros e administradores',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Colors.white.withOpacity(0.9),
                           ),
@@ -254,19 +356,29 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       children: [
         Expanded(
           child: _buildStatCard(
-            icon: Icons.pool,
+            icon: Icons.event_note,
             label: 'Aulas',
             value: _isLoadingStats ? '...' : '$_totalClasses',
-            color: Colors.blue,
+            color: AppColors.cyanDark,
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             icon: Icons.people,
             label: 'Admins',
             value: _isLoadingStats ? '...' : '$_totalAdmins',
-            color: Colors.purple,
+            color: AppColors.cyanPrimary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.person_add,
+            label: 'Pendentes',
+            value: _isLoadingStats ? '...' : '$_pendingMembers',
+            color: _pendingMembers > 0 ? Colors.orange : Colors.grey,
+            badge: _pendingMembers > 0,
           ),
         ),
       ],
@@ -278,9 +390,10 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     required String label,
     required String value,
     required Color color,
+    bool badge = false,
   }) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
@@ -291,21 +404,41 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 32),
-          const SizedBox(height: 12),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(icon, color: color, size: 28),
+              if (badge)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Text(
             value,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Colors.grey[600],
                 ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -328,32 +461,33 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           icon: Icons.dashboard,
           title: 'Dashboard',
           description: 'Estatísticas de ocupação e frequência',
-          color: Colors.teal,
+          color: AppColors.tealAccent,
           onTap: () => _navigateToDashboard(),
         ),
         const SizedBox(height: 16),
         _buildActionCard(
-          icon: Icons.pool,
+          icon: Icons.event_note,
           title: 'Gerenciar Aulas',
-          description: 'Criar, editar e excluir aulas de natação',
-          color: Colors.blue,
+          description: 'Criar aulas, tipos de aula e gerenciar treinos',
+          color: AppColors.cyanDark,
           onTap: () => _navigateToClasses(),
         ),
         const SizedBox(height: 16),
         _buildActionCard(
-          icon: Icons.person_add,
-          title: 'Gerenciar Administradores',
-          description: 'Promover usuários e visualizar admins',
-          color: Colors.purple,
-          onTap: () => _navigateToManageAdmins(),
+          icon: Icons.group,
+          title: 'Gerenciar Membros',
+          description: 'Aprovar alunos e gerenciar associações',
+          color: Colors.green,
+          onTap: () => _navigateToManageMembers(),
+          badge: _pendingMembers > 0 ? '$_pendingMembers' : null,
         ),
         const SizedBox(height: 16),
         _buildActionCard(
-          icon: Icons.settings,
-          title: 'Configurações',
-          description: 'Regras de cancelamento, reservas e limites',
-          color: Colors.orange,
-          onTap: () => _navigateToSettings(),
+          icon: Icons.admin_panel_settings,
+          title: 'Gerenciar Administradores',
+          description: 'Promover usuários e visualizar admins',
+          color: AppColors.cyanPrimary,
+          onTap: () => _navigateToManageAdmins(),
         ),
       ],
     );
@@ -365,6 +499,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     required String description,
     required Color color,
     required VoidCallback onTap,
+    String? badge,
   }) {
     return Material(
       color: Colors.transparent,
@@ -391,18 +526,46 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           ),
           child: Row(
             children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 28,
-                ),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: color,
+                      size: 28,
+                    ),
+                  ),
+                  if (badge != null)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          badge,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -463,6 +626,15 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     _loadStats();
   }
 
+  void _navigateToManageMembers() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const ManageMembersPage(),
+      ),
+    );
+    _loadStats();
+  }
+
   void _navigateToManageAdmins() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -470,13 +642,5 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       ),
     );
     _loadStats();
-  }
-
-  void _navigateToSettings() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const SettingsPage(),
-      ),
-    );
   }
 }

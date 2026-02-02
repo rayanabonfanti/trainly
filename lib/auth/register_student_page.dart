@@ -1,8 +1,12 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/supabase_client.dart';
+
+/// Chave para armazenar o tipo de cadastro pendente
+const String pendingRegistrationRoleKey = 'pending_registration_role';
 
 /// Página de registro para alunos
 class RegisterStudentPage extends StatefulWidget {
@@ -31,6 +35,14 @@ class _RegisterStudentPageState extends State<RegisterStudentPage>
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
     _animationController.forward();
+    
+    // Limpa qualquer valor antigo de cadastro pendente
+    _clearPendingRole();
+  }
+
+  Future<void> _clearPendingRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(pendingRegistrationRoleKey);
   }
 
   @override
@@ -46,6 +58,10 @@ class _RegisterStudentPageState extends State<RegisterStudentPage>
     });
 
     try {
+      // Salva o tipo de cadastro antes de iniciar o OAuth
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(pendingRegistrationRoleKey, 'student');
+      
       if (kIsWeb) {
         await supabase.auth.signInWithOAuth(
           OAuthProvider.google,
@@ -183,7 +199,7 @@ class _RegisterStudentPageState extends State<RegisterStudentPage>
             shape: BoxShape.circle,
           ),
           child: Icon(
-            Icons.pool,
+            Icons.fitness_center,
             size: 48,
             color: colorScheme.primary,
           ),
@@ -198,7 +214,7 @@ class _RegisterStudentPageState extends State<RegisterStudentPage>
         ),
         const SizedBox(height: 12),
         Text(
-          'Crie sua conta e comece a agendar\nsuas aulas de natação',
+          'Crie sua conta e comece a agendar\nsuas aulas e treinos',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurface.withOpacity(0.7),

@@ -181,7 +181,7 @@ class _LoginPageState extends State<LoginPage>
         ],
       ),
       child: Icon(
-        Icons.pool,
+        Icons.fitness_center,
         size: 48,
         color: colorScheme.primary,
       ),

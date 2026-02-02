@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/booking_rules.dart';
+import '../core/theme_provider.dart';
 import '../models/booking.dart';
 import '../models/swim_class.dart';
 import '../services/booking_service.dart';
@@ -335,9 +336,11 @@ class _MyBookingsPageState extends State<MyBookingsPage>
   }
 
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -345,36 +348,108 @@ class _MyBookingsPageState extends State<MyBookingsPage>
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
+                color: colorScheme.primaryContainer.withOpacity(0.5),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.calendar_today_outlined,
+                Icons.bookmark_border_rounded,
                 size: 48,
-                color: Colors.grey[400],
+                color: colorScheme.primary.withOpacity(0.7),
               ),
             ),
             const SizedBox(height: 24),
             Text(
-              'Nenhuma reserva',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              'Nenhuma reserva ainda',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Você ainda não fez nenhuma reserva.\nExplore as aulas disponíveis!',
+              'Suas reservas aparecerão aqui.\nUse o calendário para agendar aulas!',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.6),
+                height: 1.4,
+              ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
             FilledButton.icon(
               onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.pool),
-              label: const Text('Ver Aulas'),
+              icon: const Icon(Icons.calendar_month),
+              label: const Text('Abrir Calendário'),
+            ),
+            const SizedBox(height: 24),
+            // Como funciona
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.help_outline,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Como reservar uma aula:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHelpStep('1', 'Abra o Calendário', colorScheme),
+                  _buildHelpStep('2', 'Selecione um dia com aulas', colorScheme),
+                  _buildHelpStep('3', 'Toque em "Reservar"', colorScheme),
+                ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHelpStep(String number, String text, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: colorScheme.primary,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            text,
+            style: TextStyle(
+              color: colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -407,7 +482,7 @@ class _MyBookingsPageState extends State<MyBookingsPage>
         padding: const EdgeInsets.all(16),
         children: [
           if (futureBookings.isNotEmpty) ...[
-            _buildSectionHeader('Próximas Aulas', Icons.upcoming, Colors.blue),
+            _buildSectionHeader('Próximas Aulas', Icons.upcoming, AppColors.cyanPrimary),
             const SizedBox(height: 12),
             ...futureBookings.map((b) => _buildBookingCard(b, isFuture: true)),
           ],

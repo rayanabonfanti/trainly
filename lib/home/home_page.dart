@@ -3,17 +3,22 @@ import 'package:flutter/material.dart';
 import '../admin/admin_panel_page.dart';
 import '../admin/class_detail_page.dart';
 import '../attendance/attendance_history_page.dart';
+import '../auth/select_business_page.dart';
 import '../bookings/my_bookings_page.dart';
 import '../calendar/calendar_page.dart';
 import '../classes/classes_list_page.dart';
 import '../core/booking_rules.dart';
 import '../core/supabase_client.dart';
+import '../core/theme_provider.dart';
 import '../main.dart';
 import '../models/booking.dart';
+import '../models/business_membership.dart';
 import '../models/swim_class.dart';
+import '../profile/my_memberships_page.dart';
 import '../profile/profile_page.dart';
 import '../services/admin_service.dart';
 import '../services/booking_service.dart';
+import '../services/membership_service.dart';
 import '../widgets/skeleton_loading.dart';
 
 /// Tela Home - exibe aulas do dia seguinte com opção de reserva
@@ -118,25 +123,44 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onNavTap(int index) {
-    if (index == _currentIndex) return;
-    
-    switch (index) {
-      case 0:
-        setState(() => _currentIndex = 0);
-        break;
-      case 1:
-        _navigateToCalendar(context);
-        break;
-      case 2:
-        if (_isAdmin) {
+    if (_isAdmin) {
+      // Navegação para admin - layout simplificado
+      switch (index) {
+        case 0:
+          if (_currentIndex != 0) {
+            setState(() => _currentIndex = 0);
+            _loadData(); // Recarrega ao voltar para home
+          }
+          break;
+        case 1:
+          _navigateToCalendar(context);
+          break;
+        case 2:
           _navigateToAdminPanel(context);
-        } else {
+          break;
+        case 3:
+          _navigateToProfile(context);
+          break;
+      }
+    } else {
+      // Navegação para aluno - layout simplificado e intuitivo
+      switch (index) {
+        case 0:
+          if (_currentIndex != 0) {
+            setState(() => _currentIndex = 0);
+            _loadData(); // Recarrega ao voltar para home
+          }
+          break;
+        case 1:
+          _navigateToCalendar(context);
+          break;
+        case 2:
           _navigateToMyBookings(context);
-        }
-        break;
-      case 3:
-        _navigateToProfile(context);
-        break;
+          break;
+        case 3:
+          _navigateToProfile(context);
+          break;
+      }
     }
   }
 
@@ -154,21 +178,12 @@ class _HomePageState extends State<HomePage> {
           children: [
             _buildModernHeader(userEmail, tomorrow, colorScheme),
             _buildQuickActions(colorScheme),
+            if (!_isAdmin && !_isLoading) _buildStudentQuickActionsRow(colorScheme),
             Expanded(child: _buildBody()),
           ],
         ),
       ),
       bottomNavigationBar: _buildBottomNav(colorScheme),
-      floatingActionButton: !_isAdmin
-          ? FloatingActionButton.extended(
-              onPressed: () => _navigateToClasses(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Reservar'),
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -253,10 +268,13 @@ class _HomePageState extends State<HomePage> {
 
   void _showProfileMenu(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final user = supabase.auth.currentUser;
+    final userEmail = user?.email ?? '';
     
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: colorScheme.surface,
@@ -274,30 +292,113 @@ class _HomePageState extends State<HomePage> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+            // Header do menu com info do usuário
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        _extractName(userEmail)[0].toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _extractName(userEmail),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _isAdmin 
+                                ? Colors.orange.withOpacity(0.2)
+                                : colorScheme.secondaryContainer,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _isAdmin ? 'Administrador' : 'Aluno',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _isAdmin 
+                                  ? Colors.orange.shade700
+                                  : colorScheme.secondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             _buildMenuOption(
               icon: Icons.person_outline,
               title: 'Meu Perfil',
+              subtitle: 'Editar dados e configurações',
               onTap: () {
                 Navigator.pop(context);
                 _navigateToProfile(context);
               },
               colorScheme: colorScheme,
             ),
-            if (!_isAdmin)
+            if (!_isAdmin) ...[
               _buildMenuOption(
                 icon: Icons.history,
                 title: 'Histórico de Frequência',
+                subtitle: 'Ver aulas anteriores',
                 onTap: () {
                   Navigator.pop(context);
                   _navigateToAttendance(context);
                 },
                 colorScheme: colorScheme,
               ),
+              _buildMenuOption(
+                icon: Icons.business_rounded,
+                title: 'Minhas Academias',
+                subtitle: 'Gerenciar associações',
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToMemberships(context);
+                },
+                colorScheme: colorScheme,
+              ),
+            ],
             if (_isAdmin)
               _buildMenuOption(
-                icon: Icons.admin_panel_settings,
-                title: 'Painel Admin',
+                icon: Icons.dashboard_rounded,
+                title: 'Painel de Gestão',
+                subtitle: 'Administrar sua academia',
                 onTap: () {
                   Navigator.pop(context);
                   _navigateToAdminPanel(context);
@@ -305,13 +406,16 @@ class _HomePageState extends State<HomePage> {
                 colorScheme: colorScheme,
                 isHighlighted: true,
               ),
-            const Divider(height: 32),
+            const SizedBox(height: 8),
+            const Divider(),
+            const SizedBox(height: 8),
             _buildMenuOption(
               icon: Icons.logout,
-              title: 'Sair',
+              title: 'Sair da Conta',
+              subtitle: 'Encerrar sessão',
               onTap: () {
                 Navigator.pop(context);
-                _signOut(context);
+                _confirmSignOut(context);
               },
               colorScheme: colorScheme,
               isDestructive: true,
@@ -323,9 +427,52 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _confirmSignOut(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.logout,
+            size: 32,
+            color: Colors.red.shade600,
+          ),
+        ),
+        title: const Text('Sair da Conta'),
+        content: const Text(
+          'Tem certeza que deseja sair?\nVocê precisará fazer login novamente.',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Sair'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _signOut(context);
+    }
+  }
+
   Widget _buildMenuOption({
     required IconData icon,
     required String title,
+    String? subtitle,
     required VoidCallback onTap,
     required ColorScheme colorScheme,
     bool isDestructive = false,
@@ -355,6 +502,15 @@ class _HomePageState extends State<HomePage> {
           fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w500,
         ),
       ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurface.withOpacity(0.6),
+              ),
+            )
+          : null,
       trailing: Icon(
         Icons.chevron_right,
         color: color.withOpacity(0.5),
@@ -449,6 +605,93 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// Cards de ação rápida para alunos - guia o usuário sobre o que pode fazer
+  Widget _buildStudentQuickActionsRow(ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildQuickActionChip(
+              icon: Icons.calendar_month,
+              label: 'Agendar',
+              onTap: () => _navigateToCalendar(context),
+              colorScheme: colorScheme,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildQuickActionChip(
+              icon: Icons.bookmark_outlined,
+              label: 'Minhas Reservas',
+              onTap: () => _navigateToMyBookings(context),
+              colorScheme: colorScheme,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildQuickActionChip(
+              icon: Icons.business_rounded,
+              label: 'Academias',
+              onTap: () => _navigateToSelectBusiness(context),
+              colorScheme: colorScheme,
+              isSecondary: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionChip({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required ColorScheme colorScheme,
+    bool isSecondary = false,
+  }) {
+    return Material(
+      color: isSecondary 
+          ? colorScheme.surfaceContainerHighest 
+          : colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isSecondary 
+                    ? colorScheme.onSurface.withOpacity(0.7)
+                    : colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isSecondary 
+                        ? colorScheme.onSurface.withOpacity(0.7)
+                        : colorScheme.primary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildBottomNav(ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
@@ -463,17 +706,16 @@ class _HomePageState extends State<HomePage> {
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildNavItem(0, Icons.home_rounded, 'Início', colorScheme),
               _buildNavItem(1, Icons.calendar_month_rounded, 'Calendário', colorScheme),
-              const SizedBox(width: 60), // Espaço para o FAB
               _buildNavItem(
                 2,
-                _isAdmin ? Icons.admin_panel_settings_rounded : Icons.bookmark_rounded,
-                _isAdmin ? 'Admin' : 'Reservas',
+                _isAdmin ? Icons.dashboard_rounded : Icons.bookmark_rounded,
+                _isAdmin ? 'Gestão' : 'Reservas',
                 colorScheme,
               ),
               _buildNavItem(3, Icons.person_rounded, 'Perfil', colorScheme),
@@ -612,7 +854,7 @@ class _HomePageState extends State<HomePage> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.pool_outlined,
+                Icons.event_available_outlined,
                 size: 48,
                 color: colorScheme.primary.withOpacity(0.7),
               ),
@@ -627,7 +869,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Explore o calendário para ver as próximas aulas disponíveis',
+              'Use o calendário para encontrar e agendar\naulas em outros dias',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: colorScheme.onSurface.withOpacity(0.6),
@@ -635,10 +877,38 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(height: 32),
-            FilledButton.tonalIcon(
+            FilledButton.icon(
               onPressed: () => _navigateToCalendar(context),
               icon: const Icon(Icons.calendar_month),
-              label: const Text('Ver Calendário'),
+              label: const Text('Abrir Calendário'),
+            ),
+            const SizedBox(height: 16),
+            // Dica adicional
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline,
+                    color: colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Dica: No calendário você pode ver todas as aulas disponíveis e fazer reservas com um toque!',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -647,6 +917,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildAdminEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -657,36 +929,100 @@ class _HomePageState extends State<HomePage> {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: colorScheme.primaryContainer.withOpacity(0.5),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.calendar_today_outlined,
+                Icons.event_note_outlined,
                 size: 48,
-                color: Colors.blue.shade300,
+                color: colorScheme.primary.withOpacity(0.7),
               ),
             ),
             const SizedBox(height: 24),
             Text(
-              'Nenhuma reserva',
+              'Nenhuma reserva ainda',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Não há reservas futuras no momento.',
+              'Quando alunos fizerem reservas,\nelas aparecerão aqui.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600]),
             ),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => _navigateToAdminPanel(context),
+                  icon: const Icon(Icons.dashboard),
+                  label: const Text('Painel de Gestão'),
+                ),
+              ],
+            ),
             const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => _navigateToAdminPanel(context),
-              icon: const Icon(Icons.admin_panel_settings),
-              label: const Text('Ir para Painel Admin'),
+            // Dica para admins
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.lightbulb_outline,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Próximos passos:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTipItem('1. Crie aulas no Painel de Gestão', colorScheme),
+                  _buildTipItem('2. Convide alunos para sua academia', colorScheme),
+                  _buildTipItem('3. Acompanhe reservas aqui', colorScheme),
+                ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTipItem(String text, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            size: 16,
+            color: colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -998,7 +1334,7 @@ class _HomePageState extends State<HomePage> {
     return RefreshIndicator(
       onRefresh: _loadData,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 100), // Espaço para FAB
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         itemCount: groupedClasses.length,
         itemBuilder: (context, index) {
           final type = groupedClasses.keys.elementAt(index);
@@ -1461,11 +1797,29 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _navigateToMemberships(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const MyMembershipsPage(),
+      ),
+    );
+    _loadData();
+  }
+
   void _navigateToProfile(BuildContext context) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ProfilePage(themeProvider: themeProvider),
       ),
     );
+  }
+
+  void _navigateToSelectBusiness(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => SelectBusinessPage(),
+      ),
+    );
+    _loadData();
   }
 }

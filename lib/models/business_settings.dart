@@ -2,6 +2,9 @@ import 'class_type.dart';
 
 /// Model para configurações de negócio dinâmicas
 class BusinessSettings {
+  /// ID da empresa (null = configurações globais/padrão)
+  final String? businessId;
+
   /// Deadline de cancelamento em horas (ex: 2 = 2 horas antes da aula)
   final int cancellationDeadlineHours;
 
@@ -24,7 +27,7 @@ class BusinessSettings {
   /// Capacidade padrão para novas aulas
   final int defaultClassCapacity;
 
-  /// Número padrão de raias para novas aulas
+  /// Número padrão de vagas para novas aulas
   final int defaultLanes;
 
   /// Tipos de aula disponíveis (configurável pelo admin)
@@ -37,12 +40,13 @@ class BusinessSettings {
   final String? updatedBy;
 
   BusinessSettings({
-    this.cancellationDeadlineHours = 2,
-    this.maxCancellationsPerMonth = 2,
-    this.cancellationLimitEnabled = true,
-    this.maxBookingsPerWeek = 3,
-    this.bookingLimitEnabled = true,
-    this.minBookingAdvanceHours = 24,
+    this.businessId,
+    this.cancellationDeadlineHours = 0, // Sem deadline - pode cancelar a qualquer momento
+    this.maxCancellationsPerMonth = 0,
+    this.cancellationLimitEnabled = false, // Limite desabilitado
+    this.maxBookingsPerWeek = 0,
+    this.bookingLimitEnabled = false, // Limite desabilitado
+    this.minBookingAdvanceHours = 0, // Sem antecedência mínima
     this.defaultClassCapacity = 10,
     this.defaultLanes = 4,
     List<ClassType>? classTypes,
@@ -50,15 +54,16 @@ class BusinessSettings {
     this.updatedBy,
   }) : classTypes = classTypes ?? ClassType.defaults;
 
-  /// Valores padrão
-  factory BusinessSettings.defaults() {
+  /// Valores padrão - regras de negócio desabilitadas
+  factory BusinessSettings.defaults({String? businessId}) {
     return BusinessSettings(
-      cancellationDeadlineHours: 2,
-      maxCancellationsPerMonth: 2,
-      cancellationLimitEnabled: true,
-      maxBookingsPerWeek: 3,
-      bookingLimitEnabled: true,
-      minBookingAdvanceHours: 24,
+      businessId: businessId,
+      cancellationDeadlineHours: 0, // Sem deadline
+      maxCancellationsPerMonth: 0,
+      cancellationLimitEnabled: false, // Desabilitado
+      maxBookingsPerWeek: 0,
+      bookingLimitEnabled: false, // Desabilitado
+      minBookingAdvanceHours: 0, // Sem antecedência
       defaultClassCapacity: 10,
       defaultLanes: 4,
       classTypes: ClassType.defaults,
@@ -67,12 +72,13 @@ class BusinessSettings {
 
   factory BusinessSettings.fromJson(Map<String, dynamic> json) {
     return BusinessSettings(
-      cancellationDeadlineHours: json['cancellation_deadline_hours'] as int? ?? 2,
-      maxCancellationsPerMonth: json['max_cancellations_per_month'] as int? ?? 2,
-      cancellationLimitEnabled: json['cancellation_limit_enabled'] as bool? ?? true,
-      maxBookingsPerWeek: json['max_bookings_per_week'] as int? ?? 3,
-      bookingLimitEnabled: json['booking_limit_enabled'] as bool? ?? true,
-      minBookingAdvanceHours: json['min_booking_advance_hours'] as int? ?? 24,
+      businessId: json['business_id'] as String?,
+      cancellationDeadlineHours: json['cancellation_deadline_hours'] as int? ?? 0,
+      maxCancellationsPerMonth: json['max_cancellations_per_month'] as int? ?? 0,
+      cancellationLimitEnabled: json['cancellation_limit_enabled'] as bool? ?? false,
+      maxBookingsPerWeek: json['max_bookings_per_week'] as int? ?? 0,
+      bookingLimitEnabled: json['booking_limit_enabled'] as bool? ?? false,
+      minBookingAdvanceHours: json['min_booking_advance_hours'] as int? ?? 0,
       defaultClassCapacity: json['default_class_capacity'] as int? ?? 10,
       defaultLanes: json['default_lanes'] as int? ?? 4,
       classTypes: ClassType.fromJsonList(json['class_types'] as List<dynamic>?),
@@ -85,6 +91,7 @@ class BusinessSettings {
 
   Map<String, dynamic> toJson() {
     return {
+      'business_id': businessId,
       'cancellation_deadline_hours': cancellationDeadlineHours,
       'max_cancellations_per_month': maxCancellationsPerMonth,
       'cancellation_limit_enabled': cancellationLimitEnabled,
@@ -98,6 +105,7 @@ class BusinessSettings {
   }
 
   BusinessSettings copyWith({
+    String? businessId,
     int? cancellationDeadlineHours,
     int? maxCancellationsPerMonth,
     bool? cancellationLimitEnabled,
@@ -111,6 +119,7 @@ class BusinessSettings {
     String? updatedBy,
   }) {
     return BusinessSettings(
+      businessId: businessId ?? this.businessId,
       cancellationDeadlineHours: cancellationDeadlineHours ?? this.cancellationDeadlineHours,
       maxCancellationsPerMonth: maxCancellationsPerMonth ?? this.maxCancellationsPerMonth,
       cancellationLimitEnabled: cancellationLimitEnabled ?? this.cancellationLimitEnabled,

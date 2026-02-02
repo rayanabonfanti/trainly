@@ -2,8 +2,8 @@ import 'class_type.dart';
 
 /// Tipo de aula (enum para compatibilidade com código existente)
 enum SwimClassType {
-  classType('class', 'Aula de Natação'),
-  free('free', 'Nado Livre');
+  classType('class', 'Aula'),
+  free('free', 'Treino Livre');
 
   final String value;
   final String label;
@@ -26,7 +26,7 @@ enum SwimClassType {
   }
 }
 
-/// Model que representa uma aula de natação
+/// Model que representa uma aula/sessão de treinamento
 class SwimClass {
   final String id;
   final String title;
@@ -36,6 +36,7 @@ class SwimClass {
   final int capacity;
   final int lanes;
   final SwimClassType type;
+  final String? businessId; // ID da empresa/academia que criou a aula
   final DateTime? createdAt;
 
   SwimClass({
@@ -47,6 +48,7 @@ class SwimClass {
     required this.capacity,
     required this.lanes,
     required this.type,
+    this.businessId,
     this.createdAt,
   });
 
@@ -60,6 +62,7 @@ class SwimClass {
       capacity: json['capacity'] as int,
       lanes: json['lanes'] as int,
       type: SwimClassType.fromString(json['type'] as String),
+      businessId: json['business_id'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -75,6 +78,7 @@ class SwimClass {
       'capacity': capacity,
       'lanes': lanes,
       'type': type.value,
+      'business_id': businessId,
     };
   }
 
@@ -88,6 +92,7 @@ class SwimClass {
     int? capacity,
     int? lanes,
     SwimClassType? type,
+    String? businessId,
     DateTime? createdAt,
   }) {
     return SwimClass(
@@ -99,6 +104,7 @@ class SwimClass {
       capacity: capacity ?? this.capacity,
       lanes: lanes ?? this.lanes,
       type: type ?? this.type,
+      businessId: businessId ?? this.businessId,
       createdAt: createdAt ?? this.createdAt,
     );
   }

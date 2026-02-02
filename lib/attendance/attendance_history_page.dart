@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme_provider.dart';
 import '../models/booking.dart';
 import '../models/swim_class.dart';
 import '../services/booking_service.dart';
@@ -163,7 +164,7 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
             icon: Icons.pool,
             label: 'Total',
             value: '$_totalAttended',
-            color: Colors.blue,
+            color: AppColors.cyanPrimary,
           ),
         ),
         const SizedBox(width: 12),

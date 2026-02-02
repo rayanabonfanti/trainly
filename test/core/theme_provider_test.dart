@@ -3,6 +3,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trainly/core/theme_provider.dart';
 
 void main() {
+  group('AppColors', () {
+    test('should have correct cyan primary color', () {
+      expect(AppColors.cyanPrimary, equals(const Color(0xFF00BCD4)));
+    });
+
+    test('should have correct cyan light color', () {
+      expect(AppColors.cyanLight, equals(const Color(0xFF4DD0E1)));
+    });
+
+    test('should have correct cyan dark color', () {
+      expect(AppColors.cyanDark, equals(const Color(0xFF0097A7)));
+    });
+
+    test('should have correct teal accent color', () {
+      expect(AppColors.tealAccent, equals(const Color(0xFF1DE9B6)));
+    });
+
+    test('primaryGradient should have three colors', () {
+      expect(AppColors.primaryGradient.colors.length, equals(3));
+    });
+
+    test('buttonGradient should have two colors', () {
+      expect(AppColors.buttonGradient.colors.length, equals(2));
+    });
+  });
+
   group('AppTheme', () {
     group('lightTheme', () {
       test('should have light brightness', () {
@@ -52,8 +78,8 @@ void main() {
         expect(AppTheme.darkTheme.appBarTheme.elevation, equals(0));
       });
 
-      test('should have card elevation of 2', () {
-        expect(AppTheme.darkTheme.cardTheme.elevation, equals(2));
+      test('should have card elevation of 4', () {
+        expect(AppTheme.darkTheme.cardTheme.elevation, equals(4));
       });
 
       test('should have rounded card corners', () {
@@ -72,11 +98,9 @@ void main() {
         expect(AppTheme.darkTheme.cardTheme.shape, isNotNull);
       });
 
-      test('both themes should have same card elevation', () {
-        expect(
-          AppTheme.lightTheme.cardTheme.elevation,
-          equals(AppTheme.darkTheme.cardTheme.elevation),
-        );
+      test('both themes should have appropriate card elevation', () {
+        expect(AppTheme.lightTheme.cardTheme.elevation, equals(2));
+        expect(AppTheme.darkTheme.cardTheme.elevation, equals(4));
       });
 
       test('both themes should use Material3', () {

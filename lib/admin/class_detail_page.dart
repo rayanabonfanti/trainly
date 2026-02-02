@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/supabase_client.dart';
+import '../core/theme_provider.dart';
 import '../models/swim_class.dart';
 import '../services/booking_service.dart';
 
@@ -266,7 +267,7 @@ class _ClassDetailPageState extends State<ClassDetailPage> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
-              isClass ? Icons.school : Icons.pool,
+              isClass ? Icons.school : Icons.fitness_center,
               color: isClass
                   ? colorScheme.primary
                   : colorScheme.secondary,
@@ -357,7 +358,7 @@ class _ClassDetailPageState extends State<ClassDetailPage> {
               icon: Icons.people,
               label: 'Reservas',
               value: '$_bookedCount',
-              color: Colors.blue,
+              color: AppColors.cyanPrimary,
             ),
           ),
           const SizedBox(width: 12),
@@ -375,7 +376,7 @@ class _ClassDetailPageState extends State<ClassDetailPage> {
               icon: Icons.groups,
               label: 'Capacidade',
               value: '$capacity',
-              color: Colors.purple,
+              color: AppColors.cyanPrimary,
             ),
           ),
         ],
@@ -498,7 +499,7 @@ class _ClassDetailPageState extends State<ClassDetailPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade100,
+                  color: AppColors.cyanLight.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -506,7 +507,7 @@ class _ClassDetailPageState extends State<ClassDetailPage> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade700,
+                    color: AppColors.cyanDark,
                   ),
                 ),
               ),

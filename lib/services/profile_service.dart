@@ -31,6 +31,7 @@ class ProfileResult {
 /// Serviço para gerenciamento de perfil do usuário
 class ProfileService {
   /// Busca o perfil do usuário atual
+  /// Retorna null se o usuário não tiver perfil cadastrado
   Future<UserProfile?> fetchCurrentProfile() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return null;
@@ -43,34 +44,14 @@ class ProfileService {
           .maybeSingle();
 
       if (response == null) {
-        // Cria perfil se não existir
-        // SEGURANÇA: Role sempre é 'student' por padrão
-        final user = supabase.auth.currentUser!;
-        final newProfile = {
-          'id': userId,
-          'email': user.email,
-          'role': 'student', // Sempre student por padrão
-          'created_at': DateTime.now().toIso8601String(),
-        };
-        
-        await supabase.from('profiles').insert(newProfile);
-        
-        return UserProfile(
-          id: userId,
-          email: user.email ?? '',
-        );
+        // Usuário não tem perfil cadastrado - não cria automaticamente
+        // O cadastro deve ser feito pela administração
+        return null;
       }
 
       return UserProfile.fromJson(response);
     } catch (e) {
-      // Se a tabela não existir, retorna perfil básico
-      final user = supabase.auth.currentUser;
-      if (user != null) {
-        return UserProfile(
-          id: user.id,
-          email: user.email ?? '',
-        );
-      }
+      // Em caso de erro, retorna null por segurança
       return null;
     }
   }

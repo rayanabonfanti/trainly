@@ -17,8 +17,8 @@ class ClassType {
 
   /// Tipos padrão do sistema
   static const List<ClassType> defaults = [
-    ClassType(id: 'class', name: 'Aula de Natação', icon: 'school'),
-    ClassType(id: 'free', name: 'Nado Livre', icon: 'pool'),
+    ClassType(id: 'class', name: 'Aula', icon: 'school'),
+    ClassType(id: 'free', name: 'Treino Livre', icon: 'fitness_center'),
   ];
 
   /// Cria a partir de JSON

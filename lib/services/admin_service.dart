@@ -115,6 +115,26 @@ class AdminService {
     }
   }
 
+  /// Busca o business_id do admin atual
+  Future<String?> _getCurrentAdminBusinessId() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return null;
+
+      final response = await supabase
+          .from('profiles')
+          .select('business_id')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (response == null) return null;
+
+      return response['business_id'] as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Verifica se o usuário atual é admin
   Future<bool> isCurrentUserAdmin() async {
     return SecurityHelpers.isCurrentUserAdmin();
@@ -152,6 +172,8 @@ class AdminService {
   /// Promove um usuário para admin usando o email
   /// REQUER: Usuário autenticado como admin
   /// 
+  /// O novo admin será vinculado à mesma empresa do admin que está promovendo
+  /// Se o perfil não existir, cria um novo perfil como admin
   /// Retorna um [PromotionResult] indicando sucesso ou falha com mensagem
   Future<PromotionResult> promoteToAdmin(String email) async {
     // Validação de email
@@ -169,7 +191,16 @@ class AdminService {
         return PromotionResult.permissionDenied();
       }
 
-      // 2. Busca o perfil pelo email
+      // 2. Busca o business_id do admin atual
+      final businessId = await _getCurrentAdminBusinessId();
+      if (businessId == null) {
+        return PromotionResult(
+          success: false,
+          message: 'Você precisa ter uma empresa vinculada para promover admins',
+        );
+      }
+
+      // 3. Busca o perfil pelo email
       UserProfile? profile;
       try {
         final response = await supabase
@@ -186,21 +217,75 @@ class AdminService {
       }
       
       if (profile == null) {
-        return PromotionResult.userNotFound(normalizedEmail);
+        // 4a. Perfil não existe - cria um convite de admin
+        try {
+          // Verifica se já existe um convite para este email
+          final existingInvite = await supabase
+              .from('admin_invites')
+              .select('id')
+              .eq('email', normalizedEmail)
+              .eq('business_id', businessId)
+              .maybeSingle();
+
+          if (existingInvite != null) {
+            return PromotionResult(
+              success: false,
+              message: 'Já existe um convite pendente para este email',
+            );
+          }
+
+          // Cria o convite
+          await supabase.from('admin_invites').insert({
+            'email': normalizedEmail,
+            'business_id': businessId,
+            'invited_by': supabase.auth.currentUser?.id,
+          });
+          
+          return PromotionResult(
+            success: true,
+            message: 'Convite enviado! Quando a pessoa fizer login com este email, terá acesso como admin.',
+          );
+        } catch (e) {
+          final errorMsg = e.toString();
+          
+          // Verifica tipos específicos de erro
+          if (errorMsg.contains('does not exist') || errorMsg.contains('relation')) {
+            return PromotionResult(
+              success: false,
+              message: 'Tabela admin_invites não existe. Execute o SQL de migração no Supabase.',
+            );
+          }
+          
+          if (errorMsg.contains('policy') || errorMsg.contains('permission') || errorMsg.contains('denied')) {
+            return PromotionResult(
+              success: false,
+              message: 'Erro de permissão. Verifique as políticas RLS da tabela admin_invites.',
+            );
+          }
+          
+          // Log do erro para debug
+          return PromotionResult(
+            success: false,
+            message: 'Erro ao criar convite: ${errorMsg.length > 100 ? errorMsg.substring(0, 100) : errorMsg}',
+          );
+        }
       }
 
-      // 3. Verifica se já é admin
+      // 4b. Perfil existe - verifica se já é admin da mesma empresa
       if (profile.isAdmin) {
         return PromotionResult.alreadyAdmin(normalizedEmail);
       }
 
-      // 4. Atualiza o role para admin
+      // 5. Atualiza o role para admin E vincula à mesma empresa
       await supabase
           .from('profiles')
-          .update({'role': 'admin'})
+          .update({
+            'role': 'admin',
+            'business_id': businessId,
+          })
           .eq('id', profile.id);
 
-      // 5. Retorna o perfil atualizado
+      // 6. Retorna o perfil atualizado
       final updatedProfile = UserProfile(
         id: profile.id,
         email: profile.email,
@@ -221,7 +306,7 @@ class AdminService {
     }
   }
 
-  /// Lista todos os administradores
+  /// Lista todos os administradores da mesma empresa
   /// REQUER: Usuário autenticado como admin
   Future<List<UserProfile>> listAdmins() async {
     // SEGURANÇA: Apenas admins podem listar outros admins
@@ -231,10 +316,18 @@ class AdminService {
     }
 
     try {
+      // Busca o business_id do admin atual
+      final businessId = await _getCurrentAdminBusinessId();
+      if (businessId == null) {
+        return [];
+      }
+
+      // Lista apenas os admins da mesma empresa
       final response = await supabase
           .from('profiles')
           .select()
           .eq('role', 'admin')
+          .eq('business_id', businessId)
           .order('email');
 
       return (response as List)

@@ -327,7 +327,7 @@ class _ClassFormPageState extends State<ClassFormPage> {
               enabled: !_isLoading,
               decoration: const InputDecoration(
                 labelText: 'Título *',
-                hintText: 'Ex: Natação Adulto',
+                hintText: 'Ex: Treino Funcional',
                 prefixIcon: Icon(Icons.title),
                 border: OutlineInputBorder(),
               ),
@@ -403,7 +403,7 @@ class _ClassFormPageState extends State<ClassFormPage> {
                     controller: _lanesController,
                     enabled: !_isLoading,
                     decoration: const InputDecoration(
-                      labelText: 'Raias *',
+                      labelText: 'Vagas *',
                       hintText: 'Ex: 3',
                       prefixIcon: Icon(Icons.view_week),
                       border: OutlineInputBorder(),

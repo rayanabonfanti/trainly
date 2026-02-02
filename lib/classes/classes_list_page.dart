@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../admin/check_in_page.dart';
 import '../core/supabase_client.dart';
+import '../core/theme_provider.dart';
 import '../models/booking.dart';
+import '../models/class_type.dart';
 import '../models/swim_class.dart';
 import '../services/admin_service.dart';
 import '../services/booking_service.dart';
 import '../services/classes_service.dart';
+import '../services/settings_service.dart';
 import '../widgets/skeleton_loading.dart';
 import 'class_form_page.dart';
 
@@ -29,6 +32,7 @@ class _ClassesListPageState extends State<ClassesListPage>
   final _classesService = ClassesService();
   final _adminService = AdminService();
   final _bookingService = BookingService();
+  final _settingsService = SettingsService();
 
   List<SwimClassWithAvailability>? _classes;
   Map<String, List<Map<String, dynamic>>> _bookingsByClass = {};
@@ -36,6 +40,7 @@ class _ClassesListPageState extends State<ClassesListPage>
   bool _isAdmin = false;
   String? _error;
   Set<String> _loadingBookings = {};
+  List<ClassType> _classTypes = [];
 
   @override
   void initState() {
@@ -78,11 +83,23 @@ class _ClassesListPageState extends State<ClassesListPage>
         bookingsByClass = await _bookingService.fetchAllBookingsByClass(classIds);
       }
 
+      // Se admin, carrega tipos de aula
+      List<ClassType> classTypes = [];
+      if (isAdmin) {
+        try {
+          final settings = await _settingsService.getSettings();
+          classTypes = settings.classTypes;
+        } catch (_) {
+          classTypes = ClassType.defaults;
+        }
+      }
+
       if (mounted) {
         setState(() {
           _classes = classes;
           _isAdmin = isAdmin;
           _bookingsByClass = bookingsByClass;
+          _classTypes = classTypes;
           _isLoading = false;
         });
         _animationController.forward();
@@ -258,6 +275,19 @@ class _ClassesListPageState extends State<ClassesListPage>
                   ),
             ),
           ),
+          if (_isAdmin)
+            IconButton(
+              onPressed: _showManageClassTypesDialog,
+              icon: const Icon(Icons.category_outlined),
+              tooltip: 'Tipos de Aula',
+              style: IconButton.styleFrom(
+                backgroundColor: colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          const SizedBox(width: 4),
           IconButton(
             onPressed: _loadData,
             icon: const Icon(Icons.refresh_rounded),
@@ -271,6 +301,22 @@ class _ClassesListPageState extends State<ClassesListPage>
         ],
       ),
     );
+  }
+
+  void _showManageClassTypesDialog() async {
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ClassTypesBottomSheet(
+        classTypes: _classTypes,
+        settingsService: _settingsService,
+      ),
+    );
+
+    if (result == true) {
+      _loadData();
+    }
   }
 
   Widget _buildBody() {
@@ -433,7 +479,7 @@ class _ClassesListPageState extends State<ClassesListPage>
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      isClass ? Icons.school : Icons.pool,
+                      isClass ? Icons.school : Icons.fitness_center,
                       color: isClass
                           ? Theme.of(context).colorScheme.primary
                           : Theme.of(context).colorScheme.secondary,
@@ -499,7 +545,7 @@ class _ClassesListPageState extends State<ClassesListPage>
                   const SizedBox(width: 8),
                   _buildInfoChip(
                     Icons.view_week,
-                    '${swimClass.lanes} raias',
+                    '${swimClass.lanes} vagas',
                   ),
                   const Spacer(),
                   // Aluno: botão de reservar
@@ -593,16 +639,16 @@ class _ClassesListPageState extends State<ClassesListPage>
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: AppColors.cyanLight.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.blue.shade100),
+                border: Border.all(color: AppColors.cyanLight.withValues(alpha: 0.4)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircleAvatar(
                     radius: 10,
-                    backgroundColor: Colors.blue.shade200,
+                    backgroundColor: AppColors.cyanPrimary,
                     child: Text(
                       displayName[0].toUpperCase(),
                       style: const TextStyle(
@@ -617,7 +663,7 @@ class _ClassesListPageState extends State<ClassesListPage>
                     displayName,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.blue.shade700,
+                      color: AppColors.cyanDark,
                     ),
                   ),
                 ],
@@ -671,8 +717,8 @@ class _ClassesListPageState extends State<ClassesListPage>
         icon = Icons.block;
         text = 'Lotada';
       } else {
-        bgColor = Colors.blue.shade50;
-        textColor = Colors.blue.shade700;
+        bgColor = AppColors.cyanLight.withValues(alpha: 0.2);
+        textColor = AppColors.cyanDark;
         icon = Icons.people;
         // Mostra reservas e restantes quando há reservas
         if (bookedCount > 0) {
@@ -936,6 +982,479 @@ class _ClassesListPageState extends State<ClassesListPage>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Bottom Sheet para gerenciar tipos de aula
+class _ClassTypesBottomSheet extends StatefulWidget {
+  final List<ClassType> classTypes;
+  final SettingsService settingsService;
+
+  const _ClassTypesBottomSheet({
+    required this.classTypes,
+    required this.settingsService,
+  });
+
+  @override
+  State<_ClassTypesBottomSheet> createState() => _ClassTypesBottomSheetState();
+}
+
+class _ClassTypesBottomSheetState extends State<_ClassTypesBottomSheet> {
+  late List<ClassType> _classTypes;
+  bool _isSaving = false;
+  bool _hasChanges = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _classTypes = List.from(widget.classTypes);
+  }
+
+  void _addClassType() async {
+    final result = await showDialog<ClassType>(
+      context: context,
+      builder: (context) => const _ClassTypeDialog(),
+    );
+
+    if (result != null) {
+      if (_classTypes.any((t) => t.id == result.id)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Já existe um tipo com esse identificador'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        _classTypes.add(result);
+        _hasChanges = true;
+      });
+    }
+  }
+
+  void _editClassType(int index) async {
+    final result = await showDialog<ClassType>(
+      context: context,
+      builder: (context) => _ClassTypeDialog(classType: _classTypes[index]),
+    );
+
+    if (result != null) {
+      setState(() {
+        _classTypes[index] = result;
+        _hasChanges = true;
+      });
+    }
+  }
+
+  void _removeClassType(int index) async {
+    if (_classTypes.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('É necessário ter pelo menos um tipo de aula'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.delete_outline, size: 48, color: Colors.red),
+        title: const Text('Remover Tipo'),
+        content: Text(
+          'Tem certeza que deseja remover "${_classTypes[index].name}"?\n\n'
+          'Aulas existentes com este tipo não serão afetadas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() {
+        _classTypes.removeAt(index);
+        _hasChanges = true;
+      });
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    if (!_hasChanges) {
+      Navigator.of(context).pop(false);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final settings = await widget.settingsService.getSettings();
+      final newSettings = settings.copyWith(classTypes: _classTypes);
+      final result = await widget.settingsService.updateSettings(newSettings);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: result.success ? Colors.green : Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        if (result.success) {
+          Navigator.of(context).pop(true);
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.cyanPrimary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.category,
+                    color: AppColors.cyanPrimary,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tipos de Aula',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      Text(
+                        'Gerencie os tipos disponíveis',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.all(16),
+              itemCount: _classTypes.length,
+              itemBuilder: (context, index) {
+                final classType = _classTypes[index];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.cyanPrimary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        classType.iconData,
+                        color: AppColors.cyanPrimary,
+                        size: 24,
+                      ),
+                    ),
+                    title: Text(
+                      classType.name,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: Text(
+                      'ID: ${classType.id}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          onPressed: () => _editClassType(index),
+                          tooltip: 'Editar',
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.delete_outline,
+                            size: 20,
+                            color: _classTypes.length > 1 ? Colors.red : Colors.grey,
+                          ),
+                          onPressed: _classTypes.length > 1
+                              ? () => _removeClassType(index)
+                              : null,
+                          tooltip: 'Remover',
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _addClassType,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Adicionar Tipo'),
+                  ),
+                ),
+                if (_hasChanges) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton.icon(
+                      onPressed: _isSaving ? null : _saveChanges,
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save),
+                      label: Text(_isSaving ? 'Salvando...' : 'Salvar Alterações'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dialog para adicionar/editar tipo de aula
+class _ClassTypeDialog extends StatefulWidget {
+  final ClassType? classType;
+
+  const _ClassTypeDialog({this.classType});
+
+  @override
+  State<_ClassTypeDialog> createState() => _ClassTypeDialogState();
+}
+
+class _ClassTypeDialogState extends State<_ClassTypeDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _idController;
+  late TextEditingController _nameController;
+  String _selectedIcon = 'school';
+
+  bool get _isEditing => widget.classType != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _idController = TextEditingController(text: widget.classType?.id ?? '');
+    _nameController = TextEditingController(text: widget.classType?.name ?? '');
+    _selectedIcon = widget.classType?.icon ?? 'school';
+  }
+
+  @override
+  void dispose() {
+    _idController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+
+    final classType = ClassType(
+      id: _idController.text.trim().toLowerCase().replaceAll(' ', '_'),
+      name: _nameController.text.trim(),
+      icon: _selectedIcon,
+    );
+
+    Navigator.of(context).pop(classType);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Editar Tipo' : 'Novo Tipo de Aula'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nome *',
+                  hintText: 'Ex: Hidroginástica',
+                  prefixIcon: Icon(Icons.label),
+                ),
+                textCapitalization: TextCapitalization.words,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Nome é obrigatório';
+                  }
+                  if (value.trim().length > 50) {
+                    return 'Máximo 50 caracteres';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _idController,
+                enabled: !_isEditing,
+                decoration: InputDecoration(
+                  labelText: 'Identificador *',
+                  hintText: 'Ex: hidroginastica',
+                  prefixIcon: const Icon(Icons.key),
+                  helperText: _isEditing ? 'Não pode ser alterado' : 'Sem espaços ou acentos',
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Identificador é obrigatório';
+                  }
+                  if (value.contains(' ') ||
+                      !RegExp(r'^[a-z0-9_]+$').hasMatch(value.trim().toLowerCase())) {
+                    return 'Use apenas letras minúsculas, números e _';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Ícone',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: ClassTypeIcons.availableIcons.map((iconData) {
+                  final iconName = iconData['name'] as String;
+                  final isSelected = _selectedIcon == iconName;
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        _selectedIcon = iconName;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey.shade300,
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Icon(
+                        ClassTypeIcons.getIconData(iconName),
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey[700],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: Text(_isEditing ? 'Salvar' : 'Adicionar'),
+        ),
+      ],
     );
   }
 }

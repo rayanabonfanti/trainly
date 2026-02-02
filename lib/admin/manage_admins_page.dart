@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme_provider.dart';
 import '../services/admin_service.dart';
 
 /// Tela de Gerenciamento de Administradores
@@ -160,18 +161,11 @@ class _ManageAdminsPageState extends State<ManageAdminsPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.purple.shade400,
-            Colors.purple.shade600,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: AppColors.primaryGradient,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.purple.withOpacity(0.3),
+            color: AppColors.cyanPrimary.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -270,8 +264,8 @@ class _ManageAdminsPageState extends State<ManageAdminsPage> {
                 onPressed: _isLoading ? null : _promoteToAdmin,
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.white,
-                  foregroundColor: Colors.purple.shade600,
-                  disabledBackgroundColor: Colors.white.withOpacity(0.5),
+                  foregroundColor: AppColors.cyanDark,
+                  disabledBackgroundColor: Colors.white.withValues(alpha: 0.5),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -282,7 +276,7 @@ class _ManageAdminsPageState extends State<ManageAdminsPage> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.purple.shade600,
+                          color: AppColors.cyanDark,
                         ),
                       )
                     : const Icon(Icons.upgrade),
@@ -382,11 +376,11 @@ class _ManageAdminsPageState extends State<ManageAdminsPage> {
 
   Widget _buildAdminCard(UserProfile admin, int index) {
     final colors = [
-      Colors.blue,
-      Colors.purple,
-      Colors.teal,
-      Colors.orange,
-      Colors.pink,
+      AppColors.cyanPrimary,
+      AppColors.tealAccent,
+      AppColors.cyanDark,
+      AppColors.oceanBlue,
+      AppColors.mintGreen,
     ];
     final color = colors[index % colors.length];
 

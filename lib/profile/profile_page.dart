@@ -3,10 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
+import '../attendance/attendance_history_page.dart';
+import '../auth/select_business_page.dart';
 import '../core/supabase_client.dart';
 import '../core/theme_provider.dart';
 import '../models/user_profile.dart';
+import '../services/admin_service.dart' hide UserProfile;
 import '../services/profile_service.dart';
+import 'my_memberships_page.dart';
 
 /// Página de Perfil do Usuário - Design moderno
 class ProfilePage extends StatefulWidget {
@@ -27,10 +31,12 @@ class _ProfilePageState extends State<ProfilePage>
   late Animation<double> _fadeAnimation;
   
   final _profileService = ProfileService();
+  final _adminService = AdminService();
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  bool _isAdmin = false;
 
   // Máscara para telefone brasileiro (celular)
   final _phoneMaskFormatter = MaskTextInputFormatter(
@@ -72,10 +78,18 @@ class _ProfilePageState extends State<ProfilePage>
     });
 
     try {
-      final profile = await _profileService.fetchCurrentProfile();
+      final results = await Future.wait([
+        _profileService.fetchCurrentProfile(),
+        _adminService.isCurrentUserAdmin(),
+      ]);
+      
+      final profile = results[0] as UserProfile?;
+      final isAdmin = results[1] as bool;
+      
       if (mounted) {
         setState(() {
           _profile = profile;
+          _isAdmin = isAdmin;
           _nameController.text = profile?.name ?? '';
           // Formata o telefone se existir
           if (profile?.phone != null && profile!.phone!.isNotEmpty) {
@@ -261,11 +275,13 @@ class _ProfilePageState extends State<ProfilePage>
               const SizedBox(height: 32),
               _buildEmailCard(),
               const SizedBox(height: 24),
-              _buildFormFields(),
-              const SizedBox(height: 32),
-              _buildThemeSection(),
-              const SizedBox(height: 32),
-              _buildSaveButton(),
+            _buildFormFields(),
+            const SizedBox(height: 32),
+            _buildQuickLinksSection(),
+            const SizedBox(height: 24),
+            _buildThemeSection(),
+            const SizedBox(height: 32),
+            _buildSaveButton(),
             ],
           ),
         ),
@@ -374,6 +390,150 @@ class _ProfilePageState extends State<ProfilePage>
             }
             return null;
           },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickLinksSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Atalhos',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 16),
+          if (!_isAdmin) ...[
+            _buildQuickLinkItem(
+              icon: Icons.history,
+              title: 'Histórico de Frequência',
+              subtitle: 'Veja suas aulas anteriores',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const AttendanceHistoryPage(),
+                ),
+              ),
+              colorScheme: colorScheme,
+            ),
+            const SizedBox(height: 8),
+            _buildQuickLinkItem(
+              icon: Icons.business_rounded,
+              title: 'Minhas Academias',
+              subtitle: 'Gerencie suas associações',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const MyMembershipsPage(),
+                ),
+              ),
+              colorScheme: colorScheme,
+            ),
+            const SizedBox(height: 8),
+            _buildQuickLinkItem(
+              icon: Icons.add_business,
+              title: 'Buscar Academias',
+              subtitle: 'Encontre novas academias',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => SelectBusinessPage(),
+                ),
+              ),
+              colorScheme: colorScheme,
+            ),
+          ],
+          if (_isAdmin) ...[
+            _buildQuickLinkItem(
+              icon: Icons.info_outline,
+              title: 'Sobre o App',
+              subtitle: 'Versão e informações',
+              onTap: () => _showAboutDialog(),
+              colorScheme: colorScheme,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickLinkItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required ColorScheme colorScheme,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: colorScheme.primary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAboutDialog() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'Trainly',
+      applicationVersion: '1.0.0',
+      applicationIcon: Icon(
+        Icons.fitness_center,
+        size: 48,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      children: [
+        const Text(
+          'Aplicativo de gestão de aulas e treinos.',
         ),
       ],
     );

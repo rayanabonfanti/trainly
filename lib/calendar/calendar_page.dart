@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../core/supabase_client.dart';
+import '../core/theme_provider.dart';
 import '../models/booking.dart';
 import '../models/swim_class.dart';
 import '../services/admin_service.dart';
@@ -475,30 +476,122 @@ class _CalendarPageState extends State<CalendarPage>
   }
 
   Widget _buildDayClasses() {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     if (_selectedDayClasses == null || _selectedDayClasses!.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Nenhuma aula neste dia',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.event_busy_outlined,
+                  size: 40,
+                  color: colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Nenhuma aula neste dia',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Selecione outro dia no calendário\npara ver aulas disponíveis',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Dica visual
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.tips_and_updates_outlined,
+                      size: 18,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Dias com bolinhas têm aulas',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return RefreshIndicator(
       onRefresh: _loadData,
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.all(16),
-        itemCount: _selectedDayClasses!.length,
-        itemBuilder: (context, index) {
-          return _buildClassCard(_selectedDayClasses![index]);
-        },
+        children: [
+          // Header do dia selecionado
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.event_available,
+                  color: colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${_selectedDayClasses!.length} aula${_selectedDayClasses!.length > 1 ? 's' : ''} disponíve${_selectedDayClasses!.length > 1 ? 'is' : 'l'}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ),
+                if (!_isAdmin)
+                  Text(
+                    'Toque para reservar',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.primary.withOpacity(0.7),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // Lista de aulas
+          ..._selectedDayClasses!.map((c) => _buildClassCard(c)),
+        ],
       ),
     );
   }
@@ -576,8 +669,8 @@ class _CalendarPageState extends State<CalendarPage>
       textColor = Colors.red.shade700;
       text = 'Lotada';
     } else {
-      bgColor = Colors.blue.shade50;
-      textColor = Colors.blue.shade700;
+      bgColor = AppColors.cyanLight.withValues(alpha: 0.2);
+      textColor = AppColors.cyanDark;
       // Mostra reservas e restantes quando há reservas
       if (bookedCount > 0) {
         text = '$bookedCount reserva${bookedCount != 1 ? 's' : ''} • $availableSpots restante${availableSpots != 1 ? 's' : ''}';
