@@ -28,13 +28,13 @@ void main() async {
       _initError = 'Flutter Error: ${details.exception}\n\n${details.stack}';
     };
 
-    // Carrega .env apenas em debug (em release, usa --dart-define)
-    if (kDebugMode) {
-      try {
-        await dotenv.load(fileName: '.env');
-      } catch (e) {
-        debugPrint('Aviso: .env não encontrado: $e');
-      }
+    // Carrega .env (incluído como asset no pubspec.yaml)
+    // Em release, também pode usar --dart-define como alternativa
+    try {
+      await dotenv.load(fileName: '.env');
+    } catch (e) {
+      debugPrint('Aviso: .env não encontrado: $e');
+      // Continua - pode usar valores de --dart-define
     }
 
     try {
